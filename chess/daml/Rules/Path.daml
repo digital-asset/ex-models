@@ -1,0 +1,42 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Rules.Path where
+
+import Types
+
+import Rules.Data
+import Rules.Util
+
+path : PieceType -> Player -> Bool -> IntCoord -> IntCoord -> E [IntCoord]
+path _ _ _ c1 c2
+  | c1 == c2 = abort "Null move is not valid"
+path Pawn White True c1 c2 = do
+  assertMsg "Invalid move" (c1._2 + 1 == c2._2 && abs(c1._1 - c2._1) == 1)
+  return []
+path Pawn White False (x1,2) (x2,4) = do
+  assertMsg "Invalid move" (x1 == x2)
+  return [(x1,3)]
+path Pawn White False (x1,y1) (x2,y2) = do
+  assertMsg "Invalid move" (x1 == x2 && y2 == y1 + 1)
+  return []
+path Rook _ _ c1@(x1, y1) c2@(x2, y2) = do
+  assertMsg "Invalid move" (x1 == x2 || y1 == y2)
+  pathBetween c1 c2
+path Knight _ _ (x1, y1) (x2, y2) = do
+  assertMsg "Invalid move" ((abs(x1 - x2), abs(y1 - y2)) `elem` [(1, 2), (2, 1)])
+  return []
+path Bishop _ _ c1@(x1, y1) c2@(x2, y2) = do
+    assertMsg "Invalid move" (abs(x1 - x2) == abs(y1 - y2))
+    pathBetween c1 c2
+path Queen _ _ c1 c2 = pathBetween c1 c2
+path King _ _ (x1, y1) (x2, y2) = do
+  assertMsg "Invalid move" (abs(x1 - x2) <= 1 && abs(y1 - y2) <= 1)
+  return []
+path Pawn Black a c1 c2 =
+  do
+    p <- path Pawn White a (mirror c1) (mirror c2)
+    return (map mirror p)
+  where
+    mirror (x, y) = (x, 9 - y)

@@ -1,0 +1,140 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Governance where
+
+data Proposal
+  = CreateConstitution Constitution
+  | UpdateConstitutionText (ContractId Constitution, Text)
+  | UpgradeConstitution (ContractId Constitution)
+  deriving (Eq, Show)
+
+type DecisionOutcome = Optional (Either (ContractId Constitution) (ContractId ConstitutionV2))
+
+execute : Bool -> Proposal -> Update DecisionOutcome
+execute False _ = do pure None
+execute _ (CreateConstitution constitution) =
+  do
+    constitutionId <- create constitution
+    pure $ Some $ Left constitutionId
+execute _ (UpdateConstitutionText (constitutionId, text)) =
+  do
+    constitutionId2 <- exercise constitutionId UpdateText with newText = text
+    pure $ Some $ Left constitutionId2
+execute _ (UpgradeConstitution constitutionId) =
+  do
+    constitution <- fetch constitutionId
+    upgrade <- create ConstituationUpgrade with government = constitution.government; citizens = constitution.citizens
+    constitutionId2 <- exercise upgrade Execute with constitutionId
+    pure $ Some $ Right constitutionId2
+ 
+template Constitution
+  with
+    government : Party
+    citizens : [Party]
+    text : Text
+    version : Int
+  where
+    signatory government, citizens
+    controller government, citizens can
+      UpdateText : ContractId Constitution
+        with newText : Text
+        do create this with text = newText
+
+template ConstitutionV2
+  with
+    government : Party
+    citizens : [Party]
+    text : Text
+    version : Int
+  where
+    signatory government, citizens
+    controller government, citizens can
+      UpgradeV2 : ContractId ConstitutionV2
+        with newText : Text
+        do create this with text = newText
+    controller government can
+      nonconsuming CreateBallot : (ContractId Ballot, [ContractId VotingRight])
+        with proposal : Proposal
+        do
+          ballot <- create Ballot with government; voters = citizens; proposal; votes = []
+          votingRights <- mapA (\c -> create VotingRight with government; voter = c; proposal) citizens
+          pure (ballot, votingRights)
+
+template ConstituationUpgrade
+  with
+    government : Party
+    citizens : [Party]
+  where
+    signatory government, citizens
+    controller government, citizens can
+      Execute : ContractId ConstitutionV2
+        with constitutionId : ContractId Constitution
+        do
+          constitution <- fetch constitutionId
+          let constitutionV2 = ConstitutionV2 with government; citizens; text = constitution.text; version = constitution.version + 1
+          archive constitutionId
+          create constitutionV2
+
+template Ballot
+  with
+    government : Party
+    voters : [Party]
+    proposal : Proposal
+    votes : [Bool]
+  where
+    signatory government, voters
+
+    controller government can
+      Invite : ContractId VotingInvite
+        with voter : Party
+        do create VotingInvite with ballot = this; voter
+
+      AddVote : ContractId Ballot
+        with
+          accept : Bool
+        do
+          create this with votes = accept :: votes
+
+      Decide : DecisionOutcome
+        do
+          assert $ length voters == length votes
+          let yays = length $ filter (\v -> v) votes
+          let nays = length $ filter (\v -> not v) votes
+          assert $ yays /= nays
+          let accept = yays > nays
+          execute accept proposal
+
+template VotingInvite
+  with
+    ballot : Ballot
+    voter : Party
+  where
+    signatory ballot.government, ballot.voters
+    controller voter can
+      Accept : (ContractId Ballot, ContractId VotingRight)
+        do
+          b <- create ballot with voters = voter :: ballot.voters
+          votingRight <- create VotingRight with government = ballot.government, voter; proposal = ballot.proposal
+          pure (b, votingRight)
+          
+template VotingRight
+  with
+    government : Party
+    voter : Party
+    proposal : Proposal
+  where
+    signatory government, voter
+
+    controller voter can
+      CastVote : ContractId Ballot
+        with
+          ballotCid : ContractId Ballot
+          accept : Bool
+        do
+          ballot <- fetch ballotCid
+          assert $ government == ballot.government
+          assert $ any (== voter) ballot.voters
+          assert $ proposal == ballot.proposal
+          exercise ballotCid AddVote with accept

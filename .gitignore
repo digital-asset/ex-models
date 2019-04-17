@@ -1,0 +1,10 @@
+
+**/.DS_Store
+.vscode/settings.json
+logs/
+target/
+sqlite/
+lib/
+*.log
+navigator.history
+.navigator.conf

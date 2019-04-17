@@ -1,0 +1,12 @@
+project:
+  sdk-version: 0.12.1
+  scenario: Voting.validVote
+  name: voting
+  source: daml/Voting.daml
+  parties:
+  - Government
+  - A
+  - B
+  - C
+  - Proposer
+version: 2

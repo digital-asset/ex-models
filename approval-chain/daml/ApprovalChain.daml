@@ -1,0 +1,70 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module ApprovalChain where
+
+data Content = Content
+  with
+    originator : Party
+    text : Text
+    level1Approver : Party
+    level2Approver : Party
+    level3Approver : Party
+  deriving (Eq, Show)
+
+template Proposed
+  with
+    content : Content
+  where
+    signatory content.originator
+
+    controller content.level1Approver can
+      Level1Approve : ContractId Level1Approved
+        do
+          create Level1Approved with content
+
+template Level1Approved
+  with
+    content : Content
+  where
+    signatory content.originator, content.level1Approver
+
+    controller content.level2Approver can
+      Level2Approve : ContractId Level2Approved
+        do
+          create Level2Approved with content
+
+template Level2Approved
+  with
+    content : Content
+  where
+    signatory content.originator, content.level1Approver, content.level2Approver
+
+    controller content.level3Approver can
+      Level3Approve : ContractId FullyApproved
+        do
+          create FullyApproved with content
+
+template FullyApproved
+  with
+    content : Content
+  where
+    signatory content.originator, content.level1Approver, content.level2Approver, content.level3Approver
+
+validApproval = scenario do
+  o <- getParty "Originator"
+  a <- getParty "A"
+  b <- getParty "B"
+  c <- getParty "C"
+  let content = Content with
+        originator = o
+        text = "Text to approve"
+        level1Approver = a
+        level2Approver = b
+        level3Approver = c
+  proposed <- submit o do create Proposed with content
+  l1Approved <- submit a do exercise proposed Level1Approve
+  l2Approved <- submit b do exercise l1Approved Level2Approve
+  fullyApproved <- submit c do exercise l2Approved Level3Approve
+  return ()

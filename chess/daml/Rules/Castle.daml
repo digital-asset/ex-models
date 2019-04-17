@@ -1,0 +1,52 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Rules.Castle where
+
+import DA.Either
+import DA.Map as M
+import DA.Optional
+
+import Types
+
+import Rules.Data
+import Rules.Util
+
+-- | Checks whether the move is a castle
+isCastle : MoveData -> Bool
+isCastle md =
+  md.piece.tp == King &&
+  abs(md.from._1 - md.to._1) == 2
+
+-- | Helper function to apply the special "castle" chess move
+castle : MoveData -> E StateMap
+castle md= do
+  let
+    everCheck =
+      if md.state.player == White
+        then md.state.everCheck._1
+        else md.state.everCheck._2
+  assertMsg "Move an unmoved, unchecked King to castle"
+    (md.piece.tp == King && md.piece.moved == False && not everCheck)
+
+  (rookFromCoord, rookToCoord) <- case md.move.to of
+    Coord{col="G", row=y} -> return (Coord "H" y, Coord "F" y)
+    Coord{col="C", row=y} -> return (Coord "A" y, Coord "D" y)
+    _ -> abort "Invalid target for castle"
+  rookFrom <- intCoord rookFromCoord
+  rookTo <- intCoord rookToCoord
+  rook <- optionalToEither "Rook position not occupied" $ M.lookup rookFrom md.stateMap
+  assertMsg "Castling needs an unmoved rook"
+    (rook.tp == Rook && rook.moved == False)
+
+  movePath <- pathBetween md.from rookFrom
+  forA movePath (\c -> assertMsg "Path blocked" (isNone $ M.lookup c md.stateMap))
+
+  return $
+    M.insert md.to
+      (movePiece md.move.to md.piece)
+      (M.insert rookTo
+        (movePiece rookToCoord rook)
+        (M.delete rookFrom
+          (M.delete md.from md.stateMap)))

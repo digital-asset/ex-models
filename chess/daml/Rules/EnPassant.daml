@@ -1,0 +1,42 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Rules.EnPassant where
+
+import DA.Either
+import DA.List as L
+import DA.Map as M
+
+import Types
+
+import Rules.Data
+
+-- | Evaluates the target of a potential capture.
+-- | Returns the `to` coordinate unless an En Passant is detected
+target : MoveData -> E IntCoord
+target md =
+  if L.null md.state.moves
+    then return md.to
+    else targetInner md
+
+targetInner : MoveData -> E IntCoord
+targetInner md = do
+  let lastMove = head md.state.moves
+  lmTo <- intCoord lastMove.to
+  lmFrom <- intCoord lastMove.from
+  lastMovePiece <- optionalToEither
+    "Unexpected error: Piece not found."
+    (M.lookup lmTo md.stateMap)
+  let
+    lastMoveMatch = lastMovePiece.tp == Pawn
+          && abs(lmTo._2 - lmFrom._2) == 2
+    targetMatch = epTarget == lmTo
+    tgt = if lastMoveMatch && targetMatch && md.piece.tp == Pawn
+      then epTarget
+      else md.to
+  return tgt
+
+  where
+    epTarget = (md.to._1, md.from._2)
+    oEpTargetPiece = M.lookup epTarget md.stateMap

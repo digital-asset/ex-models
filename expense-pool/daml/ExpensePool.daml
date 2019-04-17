@@ -1,0 +1,110 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module ExpensePool where
+
+data Expense = Expense
+  with
+    name : Text
+    amount : Decimal
+    currency : Text
+    payer : Party
+  deriving (Eq, Show)
+
+template Iou
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+    currency : Text
+  where
+    signatory issuer
+
+template Pool
+  with
+    participants : [Party]
+    name : Text
+    ious : [Iou]
+  where
+    signatory participants
+
+    choice Invite : ContractId PoolInvite
+      with
+        participant : Party
+        newParticipant : Party
+      controller participant
+      do
+        assert $ elem participant participants
+        create PoolInvite with pool = this; participant = newParticipant
+      
+    choice Declare : ContractId Pool
+      with
+        participant : Party
+        expense : Expense
+      controller participant
+      do
+        assert $ elem participant participants
+        let amount = expense.amount / (intToDecimal $ length participants)
+        let payers = filter (/= expense.payer) participants
+        let newIous = map (\p -> Iou with issuer = p; owner = expense.payer; amount; currency = expense.currency) payers
+        let resultingIous = foldl insertIou ious newIous 
+        create this with ious = resultingIous
+
+    choice Split : [ContractId Iou]
+      with participant : Party
+      controller participant
+      do
+        assert $ elem participant participants
+        mapA (\i -> create i) ious
+
+template PoolInvite
+  with
+    pool : Pool
+    participant : Party
+  where
+    signatory pool.participants
+
+    controller participant can
+      Accept : ContractId Pool
+        do
+          create pool with participants = participant :: pool.participants
+
+mergeIou : Iou -> Iou -> Iou
+mergeIou a b =
+  a with amount = a.amount + b.amount
+
+netIou : Iou -> Iou -> Iou
+netIou a b =
+  case a.amount <= b.amount of
+    True -> b with amount = b.amount - a.amount
+    False -> a with amount = a.amount - b.amount
+
+insertIou : [Iou] -> Iou -> [Iou]
+insertIou ious new =
+  let toMerge = filter (\i -> ((i.issuer == new.issuer) && (i.owner == new.owner) && (i.currency == new.currency))) ious
+  in case toMerge of
+    h :: [] -> (mergeIou h new) :: (filter (/= h) ious)
+    _ ->
+      let toNet = filter (\i -> ((i.issuer == new.owner) && (i.owner == new.issuer) && (i.currency == new.currency))) ious
+      in case toNet of
+        g :: [] -> (netIou g new) :: (filter (/= g) ious)
+        _ -> new :: ious
+
+validPoolSplit = scenario do
+  a <- getParty "A"
+  b <- getParty "B"
+  c <- getParty "C"
+  poolId <- submit a do create Pool with participants = [a]; name = "Holiday"; ious = []
+  inviteId <- submit a do exercise poolId Invite with participant = a; newParticipant = b
+  poolId <- submit b do exercise inviteId Accept
+  inviteId <- submit b do exercise poolId Invite with participant = b; newParticipant = c
+  poolId <- submit c do exercise inviteId Accept
+
+  let expA = Expense with name = "Car"; amount = 1.5; currency = "USD"; payer = a
+      expB = Expense with name = "Hotel"; amount = 3.0; currency = "USD"; payer = b
+      expC = Expense with name = "Food"; amount = 4.5; currency = "USD"; payer = c
+  poolId <- submit a do exercise poolId Declare with participant = a; expense = expA
+  poolId <- submit b do exercise poolId Declare with participant = b; expense = expB
+  poolId <- submit c do exercise poolId Declare with participant = c; expense = expC
+  submit a do exercise poolId Split with participant = a

@@ -1,0 +1,112 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Rules.Data where
+
+import DA.Either
+import DA.List
+import DA.Map as M
+import DA.Text as T
+
+import Types
+
+-- Some aliases for ease of use
+type IntCoord = (Int, Int)
+type StateMap = Map IntCoord Piece
+type E = Either Text
+type Capture = Optional IntCoord
+
+-- | Preprocessed move data to be used by other rule functions
+data MoveData = MoveData with
+  state : GameState
+  stateMap : StateMap
+  move : ChessMove
+  from : IntCoord
+  to : IntCoord
+  piece : Piece
+
+-- | This allows us to use `assertMsg` and `===` within a `do` block for
+-- | `Either Text`
+instance CanAbort E where
+  abort = Left
+
+-- | Text identifiers of the columns of a chess board.
+letterCoords = ["A", "B", "C", "D", "E", "F", "G", "H"]
+
+-- | Turns a `Coord` into integer coordinates with x in [1-8] and
+-- | y in [1-8]. Fails if the `row` or `col` fields are out of range
+intCoord : Coord -> E IntCoord
+intCoord p = do
+  assertMsg "Row coordinate must be between 1 and 8" (p.row <= 8 && p.row >= 1)
+  assertMsg "Col coordinate must have one letter" (T.length p.col == 1)
+  col <- optionalToEither "Col coordinate must be between A and H" (elemIndex p.col letterCoords)
+  Right (col + 1, p.row)
+
+
+-- | Takes a `GameState` and tries to turn it into a map from
+-- | integer coordinates x in [1-8] and y in [1-8]. Fails if a
+-- | field is double occupied.
+mapState : GameState -> E StateMap
+mapState s =
+  foldl
+    work
+    (Right $ fromList[])
+    s.pieces
+  where
+    work e p =
+      case e of
+        r@(Left _) -> r
+        Right m -> do
+          pc <- intCoord (coord p)
+          if member pc m
+            then
+              Left ("Double occupation on " <> show pc)
+            else
+              Right (insert pc p m)
+
+-- | Function to pre-process move and game state
+toMoveData : GameState -> ChessMove -> E MoveData
+toMoveData state move = do
+  from <- intCoord move.from
+  to <- intCoord move.to
+  stateMap <- mapState state
+  piece <- optionalToEither "From position not occupied" $ M.lookup from stateMap
+  assertMsg "Player doesn't own piece" (state.player == piece.owner)
+  return $ MoveData with ..
+
+
+initState x =
+  GameState with
+    player = White
+    pieces = initWhitePieces ++ initBlackPieces
+    everCheck = (False, False)
+    moves = []
+  where
+    initTypes = [Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]
+
+    initWhitePawns =
+      map (\l -> Piece with
+        coord = Coord with
+          row = 2
+          col = l
+        tp = Pawn
+        owner = White
+        moved = False)
+      letterCoords
+
+    initWhitePieces = initWhitePawns ++
+      map (\t -> Piece with
+        coord = Coord with
+          row = 1
+          col = t._1
+        tp = t._2
+        owner = White
+        moved = False)
+      (zip letterCoords initTypes)
+
+    mirror : Piece -> Piece
+    mirror p = p with
+      coord = p.coord with row = 9 - p.coord.row
+      owner = Black
+    initBlackPieces = map mirror initWhitePieces

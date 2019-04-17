@@ -1,0 +1,9 @@
+project:
+  sdk-version: 0.12.1
+  scenario: Test.allScenarios
+  name: tic-tac-toe
+  source: daml/Test.daml
+  parties:
+  - Player1
+  - Player2
+version: 2

@@ -1,0 +1,178 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Tests.Rules where
+
+import DA.Assert
+
+import Types
+
+import Rules.Data
+import Rules.Main
+import Rules.Path
+import Rules.Util
+
+initStateMap = scenario do
+  case mapState $ initState () of
+    Left e -> abort e
+    Right _ -> return ()
+
+initStateWin = scenario do
+  case checkWin $ initState () of
+    None -> return ()
+    Some p -> abort $ show p
+
+testIntCoord = scenario do
+  intCoord (Coord with row = 1; col = "C") === Right (3, 1)
+  intCoord (Coord with row = 8; col = "H") === Right (8, 8)
+  intCoord (Coord with row = 8; col = "I") === Left "Col coordinate must be between A and H"
+  intCoord (Coord with row = 8; col = "a") === Left "Col coordinate must be between A and H"
+  intCoord (Coord with row = 0; col = "A") === Left "Row coordinate must be between 1 and 8"
+  intCoord (Coord with row = 9; col = "A") === Left "Row coordinate must be between 1 and 8"
+
+testCheckWin = scenario do
+  let
+    filterNot f = filter (not . f)
+    rmBlackKing = filterNot (\p -> p.tp == King && p.owner == Black)
+    rmWhiteKing = filterNot (\p -> p.tp == King && p.owner == White)
+    is = initState ()
+    whiteWin = is with pieces = rmBlackKing is.pieces
+    blackWin = is with pieces = rmWhiteKing is.pieces
+
+  checkWin is === None
+  checkWin whiteWin === Some White
+  checkWin blackWin === Some Black
+
+testPathBetween = scenario do
+  pathBetween (3,3) (5,5) === Right [(4,4)]
+  pathBetween (3,3) (6,3) === Right [(4,3), (5,3)]
+  pathBetween (3,3) (5,1) === Right [(4,2)]
+  pathBetween (3,3) (3,1) === Right [(3,2)]
+  pathBetween (3,3) (2,2) === Right []
+  pathBetween (3,3) (1,3) === Right [(2,3)]
+  pathBetween (3,3) (1,5) === Right [(2,4)]
+  pathBetween (3,3) (3,6) === Right [(3,4), (3, 5)]
+  pathBetween (3,3) (4,6) === Left "Not a straight path"
+
+testPawnPath = scenario do
+  path Pawn White False (5, 2) (5, 2) === Left "Null move is not valid"
+  path Pawn White False (5, 2) (5, 3) === Right []
+  path Pawn White False (5, 2) (5, 4) === Right [(5, 3)]
+  path Pawn White False (5, 2) (4, 3) === Left "Invalid move"
+
+  path Pawn White False (5, 3) (5, 4) === Right []
+  path Pawn White False (5, 3) (5, 5) === Left "Invalid move"
+  path Pawn White False (5, 3) (4, 2) === Left "Invalid move"
+  path Pawn White False (5, 3) (4, 4) === Left "Invalid move"
+
+  path Pawn White True (5, 2) (5, 2) === Left "Null move is not valid"
+  path Pawn White True (5, 2) (5, 3) === Left "Invalid move"
+  path Pawn White True (5, 2) (5, 4) === Left "Invalid move"
+  path Pawn White True (5, 2) (4, 3) === Right []
+
+  path Pawn White True (5, 3) (5, 4) === Left "Invalid move"
+  path Pawn White True (5, 3) (5, 5) === Left "Invalid move"
+  path Pawn White True (5, 3) (4, 2) === Left "Invalid move"
+  path Pawn White True (5, 3) (4, 4) === Right []
+
+  path Pawn Black False (5, 7) (5, 7) === Left "Null move is not valid"
+  path Pawn Black False (5, 7) (5, 6) === Right []
+  path Pawn Black False (5, 7) (5, 5) === Right [(5, 6)]
+  path Pawn Black False (5, 7) (4, 6) === Left "Invalid move"
+
+  path Pawn Black False (5, 6) (5, 5) === Right []
+  path Pawn Black False (5, 6) (5, 4) === Left "Invalid move"
+  path Pawn Black False (5, 6) (4, 7) === Left "Invalid move"
+  path Pawn Black False (5, 6) (4, 5) === Left "Invalid move"
+
+  path Pawn Black True (5, 7) (5, 7) === Left "Null move is not valid"
+  path Pawn Black True (5, 7) (5, 6) === Left "Invalid move"
+  path Pawn Black True (5, 7) (5, 5) === Left "Invalid move"
+  path Pawn Black True (5, 7) (4, 6) === Right []
+
+  path Pawn Black True (5, 6) (5, 5) === Left "Invalid move"
+  path Pawn Black True (5, 6) (5, 4) === Left "Invalid move"
+  path Pawn Black True (5, 6) (4, 7) === Left "Invalid move"
+  path Pawn Black True (5, 6) (4, 5) === Right []
+
+testRookPath = scenario do
+  path Rook White False (5, 2) (5, 2) === Left "Null move is not valid"
+  path Rook White False (5, 2) (8, 2) === Right [(6,2), (7,2)]
+  path Rook White False (5, 2) (3, 2) === Right [(4,2)]
+  path Rook White False (5, 2) (5, 1) === Right []
+  path Rook White False (5, 2) (5, 4) === Right [(5,3)]
+  path Rook White False (5, 2) (6, 3) === Left "Invalid move"
+
+testKnightPath = scenario do
+  path Knight White False (5, 2) (5, 2) === Left "Null move is not valid"
+  path Knight White False (4, 4) (6, 5) === Right []
+  path Knight White False (4, 4) (6, 3) === Right []
+  path Knight White False (4, 4) (5, 2) === Right []
+  path Knight White False (4, 4) (5, 6) === Right []
+  path Knight White False (4, 4) (3, 6) === Right []
+  path Knight White False (4, 4) (3, 2) === Right []
+  path Knight White False (4, 4) (2, 5) === Right []
+  path Knight White False (4, 4) (2, 3) === Right []
+  path Knight White False (5, 2) (6, 3) === Left "Invalid move"
+
+testBishopPath = scenario do
+  path Bishop White False (5, 2) (5, 2) === Left "Null move is not valid"
+  path Bishop White False (5, 2) (8, 5) === Right [(6,3), (7,4)]
+  path Bishop White False (5, 2) (6, 1) === Right []
+  path Bishop White False (5, 2) (4, 1) === Right []
+  path Bishop White False (5, 2) (3, 4) === Right [(4,3)]
+  path Bishop White False (5, 2) (5, 3) === Left "Invalid move"
+
+testQueenPath = scenario do
+  path Queen White False (5, 2) (5, 2) === Left "Null move is not valid"
+  path Queen White False (5, 2) (8, 5) === Right [(6,3), (7,4)]
+  path Queen White False (5, 2) (6, 1) === Right []
+  path Queen White False (5, 2) (4, 1) === Right []
+  path Queen White False (5, 2) (3, 4) === Right [(4,3)]
+  path Queen White False (5, 2) (8, 2) === Right [(6,2), (7,2)]
+  path Queen White False (5, 2) (3, 2) === Right [(4,2)]
+  path Queen White False (5, 2) (5, 1) === Right []
+  path Queen White False (5, 2) (5, 4) === Right [(5,3)]
+  path Queen White False (5, 2) (6, 4) === Left "Not a straight path"
+
+testKingPath = scenario do
+  path King White False (5, 2) (5, 2) === Left "Null move is not valid"
+  path King White False (4, 4) (5, 5) === Right []
+  path King White False (4, 4) (5, 4) === Right []
+  path King White False (4, 4) (5, 3) === Right []
+  path King White False (4, 4) (4, 3) === Right []
+  path King White False (4, 4) (3, 3) === Right []
+  path King White False (4, 4) (3, 4) === Right []
+  path King White False (4, 4) (3, 5) === Right []
+  path King White False (4, 4) (4, 5) === Right []
+  path King White False (4, 4) (4, 6) === Left "Invalid move"
+
+takeMove : (Either Text GameState) -> ((Text, Int), (Text, Int)) -> (Either Text GameState)
+takeMove eg m = do
+      g <- eg
+      tryMoveInner g $
+        ChessMove (uncurry Coord m._1) (uncurry Coord m._2) None None
+
+testFoolsMateInner = scenario do
+  let
+    moves = [
+      (("G", 2), ("G", 4)),
+      (("E", 7), ("E", 6)),
+      (("F", 2), ("F", 4)),
+      (("D", 8), ("H", 4)),
+      (("E", 1), ("F", 2)),
+      (("H", 4), ("F", 2))
+      ]
+    game = foldl takeMove (Right $ initState ()) moves
+
+  case game of
+    Right s -> checkWin s === Some Black
+    _ -> abort $ show game
+
+testBlocked = scenario do
+  let
+    moves = [(("D", 1), ("D", 7))]
+    game = foldl takeMove (Right $ initState ()) moves
+
+  game === Left "Path blocked"

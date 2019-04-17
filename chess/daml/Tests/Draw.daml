@@ -1,0 +1,98 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Tests.Draw where
+
+import DA.Assert
+
+import Chess
+import Init
+
+import Tests.Chess
+
+testThreeRepeat = scenario do
+  InitData {..} <- initData
+
+  submitMustFail white do
+    exercise game ClaimDraw
+
+  let
+    moves = [
+      (white, ("A", 2), ("A", 4)),
+      (black, ("A", 7), ("A", 5)),
+      (white, ("A", 1), ("A", 3)),
+      (black, ("A", 8), ("A", 6)),
+      (white, ("A", 3), ("A", 1)),
+      (black, ("A", 6), ("A", 8)),
+      (white, ("A", 1), ("A", 3)),
+      (black, ("A", 8), ("A", 6)),
+      (white, ("A", 3), ("A", 1)),
+      (black, ("A", 6), ("A", 8)),
+      (white, ("A", 1), ("A", 3)),
+      (black, ("A", 8), ("A", 6)),
+      (white, ("A", 3), ("A", 1)),
+      (black, ("A", 6), ("A", 8)),
+      (white, ("A", 1), ("A", 3)),
+      (black, ("A", 8), ("A", 6)),
+      (white, ("A", 3), ("A", 1)),
+      (black, ("A", 6), ("A", 8))
+      ]
+  game <- foldl takeMove (return $ Right game) moves
+
+  draw <- case game of
+    Right g -> do
+      submit white do
+        exercise g ClaimDraw
+    Left _ -> abort "Should be in play"
+
+  submit white do
+    res <- fetch draw
+    res.winner === None
+
+  assert True
+
+testFiftyMove = scenario do
+  InitData {..} <- initData
+
+  submitMustFail white do
+    exercise game ClaimDraw
+
+  let
+    moves = [
+      (white, ("A", 2), ("A", 4)),
+      (black, ("A", 7), ("A", 5))
+      ] ++
+      (join (replicate 11 [
+        (white, ("A", 1), ("A", 3)),
+        (black, ("A", 8), ("A", 6)),
+        (white, ("A", 3), ("A", 1)),
+        (black, ("A", 6), ("A", 8))
+      ])) ++
+      [
+        (white, ("A", 1), ("A", 3)),
+        (black, ("A", 8), ("A", 6)),
+        (white, ("A", 3), ("B", 3))
+      ]
+  game <- foldl takeMove (return $ Right game) moves
+
+  case game of
+    Right g -> do
+      submitMustFail white do
+        exercise g ClaimDraw
+    Left _ -> abort "Should be in play"
+
+  game <- takeMove (return game) (black, ("A", 6), ("A", 8))
+
+
+  draw <- case game of
+    Right g -> do
+      submit white do
+        exercise g ClaimDraw
+    Left _ -> abort "Should be in play"
+
+  submit white do
+    res <- fetch draw
+    res.winner === None
+
+  assert True

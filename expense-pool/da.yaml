@@ -1,0 +1,11 @@
+project:
+  sdk-version: 0.12.1
+  scenario: ExpensePool.validPoolSplit
+  name: expense-pool
+  source: daml/ExpensePool.daml
+  parties:
+  - Organizer
+  - A
+  - B
+  - C
+version: 2

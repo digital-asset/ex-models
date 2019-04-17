@@ -1,0 +1,72 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Test where
+
+import DA.Date
+import DA.Time
+import CrowdFunding
+import Iou
+
+data Fixture = Fixture with
+  o : Party
+  a : Party
+  b : Party
+  c : Party
+  iouIdA : ContractId Iou
+  iouIdB : ContractId Iou
+  iouIdC : ContractId Iou
+  projectId : ContractId Campaign
+
+setupFixture : Decimal -> Decimal -> Decimal -> Decimal -> Scenario Fixture
+setupFixture amountA amountB amountC threshold =
+  do
+    i <- getParty "Issuer"
+    o <- getParty "Originator"
+    a <- getParty "A"
+    b <- getParty "B"
+    c <- getParty "C"
+    iouIdA <- submit i do create Iou with issuer = i; owner = a; locker = a; amount = amountA; currency = "USD"
+    iouIdB <- submit i do create Iou with issuer = i; owner = b; locker = b; amount = amountB; currency = "USD"
+    iouIdC <- submit i do create Iou with issuer = i; owner = c; locker = c; amount = amountC; currency = "USD"
+    projectId <- submit o do
+      create Campaign with
+        originator = o
+        name = "MyProject"
+        description = "A test project"
+        backers = []
+        ious = []
+        raised = 0.0
+        deadline = time (date 1970 Jan 2) 0 0 0
+        threshold
+    inviteId <- submit o do exercise projectId Invite with backer = a
+    projectId <- submit a do exercise inviteId Accept
+    inviteId <- submit o do exercise projectId Invite with backer = b
+    projectId <- submit b do exercise inviteId Accept
+    inviteId <- submit o do exercise projectId Invite with backer = c
+    projectId <- submit c do exercise inviteId Accept
+    projectId <- submit a do exercise projectId Pledge with backer = a; iouId = iouIdA
+    projectId <- submit b do exercise projectId Pledge with backer = b; iouId = iouIdB
+    projectId <- submit c do exercise projectId Pledge with backer = c; iouId = iouIdC
+    pure Fixture with ..
+
+validClaim = scenario do
+  Fixture{..} <- setupFixture 50.0 25.0 25.0 100.0
+  passToDate $ date 1970 Jan 2
+  submit o do exercise projectId Claim
+  
+validReclaim = scenario do
+  Fixture{..} <- setupFixture 49.0 25.0 25.0 100.0
+  passToDate $ date 1970 Jan 2
+  submit a do exercise projectId Reclaim with backer = a
+
+invalidClaim = scenario do
+  Fixture{..} <- setupFixture 49.0 25.0 25.0 100.0
+  passToDate $ date 1970 Jan 2
+  submitMustFail o do exercise projectId Claim
+  
+invalidReclaim = scenario do
+  Fixture{..} <- setupFixture 50.0 25.0 25.0 100.0
+  passToDate $ date 1970 Jan 2
+  submitMustFail a do exercise projectId Reclaim with backer = a

@@ -1,0 +1,11 @@
+project:
+  sdk-version: 0.12.1
+  scenario: TaskTracking.validTaskWorkflow
+  name: task-tracking
+  source: daml/TaskTracking.daml
+  parties:
+  - A
+  - B
+  - C
+  - D
+version: 2

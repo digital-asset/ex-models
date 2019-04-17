@@ -1,0 +1,33 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Iou where
+
+template Iou
+  with
+    issuer : Party
+    owner : Party
+    locker : Party
+    amount : Decimal
+    currency : Text
+  where
+    signatory issuer
+
+    controller owner can
+      Transfer : ContractId Iou
+        with newOwner : Party
+        do
+          assert $ owner == locker
+          create this with owner = newOwner; locker = newOwner
+      Lock : ContractId Iou
+        with newLocker : Party
+        do
+          assert $ owner == locker
+          create this with locker = newLocker
+
+    controller locker can
+      Unlock : ContractId Iou
+        do
+          assert $ owner /= locker
+          create this with locker = owner

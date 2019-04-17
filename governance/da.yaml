@@ -1,0 +1,11 @@
+project:
+  sdk-version: 0.12.1
+  scenario: Test.allScenarios
+  name: governance
+  source: daml/Test.daml
+  parties:
+  - Government
+  - X
+  - Y
+  - Z
+version: 2

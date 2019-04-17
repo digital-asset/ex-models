@@ -1,0 +1,79 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Rules.Main where
+
+import DA.Either
+import DA.Map as M
+import DA.Optional
+
+import Types
+
+import Rules.Castle
+import Rules.Data
+import Rules.Move
+import Rules.Path
+
+
+-- | Tries to apply a `ChessMove` to a `GameState`.
+tryMove : GameState -> ChessMove -> MoveResult
+tryMove state move =
+  case tryMoveInner state move of
+    Left e -> Error e
+    Right ns -> case checkWin ns of
+      None -> NewState ns
+      Some p -> Winner p
+
+tryMoveInner : GameState -> ChessMove -> E GameState
+tryMoveInner state move = do
+  md <- toMoveData state move
+
+  newMap <- if isCastle md
+    then castle md
+    else simpleMove md
+
+  newEverCheck <- checkCheck md newMap
+
+  return state with
+    player = if state.player == White then Black else White
+    pieces = map snd (M.toList newMap)
+    everCheck = newEverCheck
+    moves = move :: state.moves
+
+
+-- | Checks whether either player has won in a given game state
+checkWin : GameState -> Optional Player
+checkWin s =
+    case hasKings of
+      (True, True) -> None
+      (False, _) -> Some Black
+      (_, False) -> Some White
+  where
+    kingFn t p =
+      (
+        fst t || (owner p == White && p.tp == King),
+        snd t || (owner p == Black && p.tp == King)
+      )
+    hasKings = foldl
+      kingFn
+      (False, False)
+      s.pieces
+
+-- | Checks whether the opponent player is checked and gives updated values
+checkCheck : MoveData -> StateMap -> E (Bool, Bool)
+checkCheck md stateMap =
+  case md.move.check of
+    None -> return md.state.everCheck
+    Some (p, k) -> do
+      from <- intCoord p
+      to <- intCoord k
+      piece <- optionalToEither "Check from position not occupied" $ M.lookup from stateMap
+      king <- optionalToEither "Check from position not occupied" $ M.lookup to stateMap
+      assertMsg "Player doesn't own piece" (md.state.player == piece.owner)
+      assertMsg "King invalid" (md.state.player /= king.owner && king.tp == King)
+      movePath <- path piece.tp md.state.player True from to
+      forA movePath (\c -> assertMsg "Check ath blocked" (isNone $ M.lookup c stateMap))
+      if md.state.player == White
+        then return (md.state.everCheck._1, True)
+        else return (True, md.state.everCheck._2)

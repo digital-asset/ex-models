@@ -1,0 +1,56 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Rules.Move where
+
+import DA.Map as M
+import DA.Optional
+
+import Types
+
+import Rules.EnPassant
+import Rules.Data
+import Rules.Path
+import Rules.Promotion
+import Rules.Util
+
+-- | Helper function to apply a simple chess move to
+simpleMove : MoveData -> E StateMap
+simpleMove md = do
+  capture <- checkCapture md
+  newType <- checkPromotion md
+  let
+    target = fromOptional md.to capture
+    isCapture = isSome capture
+  movePath <- path md.piece.tp md.state.player isCapture md.from md.to
+
+  forA movePath (\c -> assertMsg "Path blocked" (isNone $ M.lookup c md.stateMap))
+
+  return $
+    M.insert md.to
+      (movePiece md.move.to md.piece) with tp = newType
+      (M.delete target
+        (M.delete md.from md.stateMap))
+
+
+-- | Checks whether a chess move is a capture, ie whether an opponent
+-- | piece gets taken. Fails if the `to` field has piece by the player
+checkCapture : MoveData -> E Capture
+checkCapture md = do
+  -- Which piece may the player be trying to take?
+  tgt <- target md
+  let
+    tgtPiece = M.lookup tgt md.stateMap
+    tgtCoord = fmap coord tgtPiece
+    toOwner = do
+      piece <- M.lookup md.to md.stateMap
+      return piece.owner
+
+  assertMsg "Can't capture own piece" (toOwner /= Some md.state.player)
+
+  case tgtCoord of
+    None -> return None
+    Some c -> do
+      ret <- intCoord c
+      return (Some ret)

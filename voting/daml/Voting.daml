@@ -1,0 +1,89 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Voting where
+
+data Proposal = Proposal
+  with
+    proposer : Party
+    text : Text
+  deriving (Eq, Show)
+
+template Ballot
+  with
+    government : Party
+    proposal : Proposal
+    voters : [Party]
+    votes : [Bool]
+  where
+    signatory government
+    observer voters
+
+    controller government can
+      AddVoter : (ContractId VotingRight, ContractId Ballot)
+        with voter : Party
+        do
+          votingRight <- create VotingRight with government; voter; proposal
+          ballot <- create this with voters = voter :: voters
+          return (votingRight, ballot)
+
+      AddVote : ContractId Ballot
+        with
+          accept : Bool
+        do
+          create this with votes = accept :: votes
+
+      Decide : ContractId Decision
+        do
+          assert $ length voters == length votes
+          let yays = length $ filter (\v -> v) votes
+          let nays = length $ filter (\v -> not v) votes
+          assert $ yays /= nays
+          let accept = yays > nays
+          create Decision with government; proposal; accept
+
+template VotingRight
+  with
+    government : Party
+    voter : Party
+    proposal : Proposal
+  where
+    signatory government
+
+    controller voter can
+      CastVote : ContractId Ballot
+        with
+          ballotCid : ContractId Ballot
+          accept : Bool
+        do
+          ballot <- fetch ballotCid
+          assert $ government == ballot.government
+          assert $ any (== voter) ballot.voters
+          assert $ proposal == ballot.proposal
+          exercise ballotCid AddVote with accept
+
+template Decision
+  with
+    government : Party
+    proposal : Proposal
+    accept : Bool
+  where
+    signatory government
+
+validVote = scenario do
+  g <- getParty "Government"
+  a <- getParty "A"
+  b <- getParty "B"
+  c <- getParty "C"
+  p <- getParty "Proposer"
+  let proposal = Proposal with proposer = p; text = "My Proposal"
+  ballot <- submit g do create Ballot with government = g; proposal; voters = []; votes = []
+  (vra, ballot) <- submit g do exercise ballot AddVoter with voter = a
+  (vrb, ballot) <- submit g do exercise ballot AddVoter with voter = b
+  (vrc, ballot) <- submit g do exercise ballot AddVoter with voter = c
+  ballot <- submit a do exercise vra CastVote with ballotCid = ballot; accept = True
+  ballot <- submit b do exercise vrb CastVote with ballotCid = ballot; accept = True
+  ballot <- submit c do exercise vrc CastVote with ballotCid = ballot; accept = False
+  decision <- submit g do exercise ballot Decide
+  return ()

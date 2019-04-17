@@ -1,0 +1,73 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Rules.Draw where
+
+import DA.Foldable as F
+import DA.List as L
+import DA.Map as M
+import DA.Optional
+
+import Types
+
+import Rules.Data
+import Rules.Main
+import Rules.Move
+
+data OrdGameState = OrdGameState with
+  player : Player
+  pieces : Map Coord Piece
+    deriving (Eq, Show, Ord)
+
+data DrawState = DrawState with
+  idleMoves : Int
+  stateCounts : Map OrdGameState Int
+  gameState : GameState
+
+-- | Checkdraw checks the 50 move rule and threefold repetition by
+-- | Replaying the whole game
+checkDraw : [ChessMove] -> E Bool
+checkDraw moves = do
+  fds <- efds
+  let maxRepeats = maximum $ map snd (M.toList fds.stateCounts)
+  return (maxRepeats >= 3 || fds.idleMoves >= 50)
+  where
+    is = initState ()
+
+    ids = DrawState with
+      idleMoves = 0
+      stateCounts = fromList [(toOrd is, 1)]
+      gameState = is
+
+    efds = L.foldr
+      moveFn
+      (Right ids)
+      moves
+
+toOrd : GameState -> OrdGameState
+toOrd gs = OrdGameState with
+  player = gs.player
+  pieces = M.fromList $ map (\p -> (p.coord, p)) gs.pieces
+
+moveFn : ChessMove -> E DrawState -> E DrawState
+moveFn move eds = do
+  ds <- eds
+  gameState <- tryMoveInner ds.gameState move
+  md <- toMoveData ds.gameState move
+  capture <- checkCapture md
+  let
+    idle = isNone capture && md.piece.tp /= Pawn
+    idleMoves = if idle
+      then ds.idleMoves + 1
+      else 0
+    stateCounts = increment (toOrd gameState) ds.stateCounts
+  return $ DrawState with ..
+
+increment : (Ord a) => a -> Map a Int -> Map a Int
+increment k m = M.insert k nv m
+  where
+    mv = M.lookup k m
+    nv = case mv of
+      None -> 1
+      Some v -> v + 1

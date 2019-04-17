@@ -1,0 +1,97 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module TaskTracking where
+
+data Task = Task
+  with
+    description : Text
+  deriving (Eq, Show)
+
+template NewTask
+  with
+    creator : Party
+    task : Task
+  where
+    signatory creator
+    controller creator can
+      Assign : ContractId TaskAssignmentProposal
+        with assignee : Party
+        do
+          create TaskAssignmentProposal with creator; task; assignee
+
+template TaskAssignmentProposal
+  with
+    creator : Party
+    task : Task
+    assignee : Party
+  where
+    signatory creator
+    controller assignee can
+      Accept : ContractId AssignedTask
+        do
+          create AssignedTask with creator; task; assignee
+      Redirect : ContractId TaskAssignmentProposal
+        with newAssignee : Party
+        do
+          create this with assignee = newAssignee
+
+template AssignedTask
+  with
+    creator : Party
+    task : Task
+    assignee : Party
+  where
+    signatory creator, assignee
+    controller assignee can
+      Start : ContractId StartedTask
+        do
+          startTime <- getTime
+          create StartedTask with creator; task; assignee; startTime
+      Reassign : ContractId TaskAssignmentProposal
+        with newAssignee : Party
+        do
+          create TaskAssignmentProposal with creator; task; assignee = newAssignee
+
+template StartedTask
+  with
+    creator : Party
+    task : Task
+    assignee : Party
+    startTime : Time
+  where
+    signatory creator, assignee
+    controller assignee can
+      Complete : ContractId CompletedTask
+        do
+          endTime <- getTime
+          create CompletedTask with creator; task; assignee; startTime; endTime
+
+template CompletedTask
+  with
+    creator : Party
+    task : Task
+    assignee : Party
+    startTime : Time
+    endTime : Time
+  where
+    signatory creator, assignee
+    controller assignee can
+      Delete : ()
+        do return ()
+
+validTaskWorkflow = scenario do
+  a <- getParty "A"
+  b <- getParty "B"
+  c <- getParty "C"
+  d <- getParty "D"
+  newTask <- submit a do create NewTask with creator = a; task = Task with description = "Go shopping"
+  proposal <- submit a do exercise newTask Assign with assignee = b
+  redirected <- submit b do exercise proposal Redirect with newAssignee = c
+  assignedTask <- submit c do exercise redirected Accept
+  proposal <- submit c do exercise assignedTask Reassign with newAssignee = d
+  assignedTask <- submit d do exercise proposal Accept
+  startedTask <- submit d do exercise assignedTask Start
+  completedTask <- submit d do exercise startedTask Complete
+  submit d do exercise completedTask Delete

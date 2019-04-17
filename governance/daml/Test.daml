@@ -1,0 +1,112 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Test where
+
+import Governance
+
+data Fixture = Fixture with
+  government : Party
+  x : Party
+  y : Party
+  z : Party
+  citizens : [Party]
+
+fixture : Scenario Fixture
+fixture =
+  do
+    government <- getParty "Government"
+    x <- getParty "X"
+    y <- getParty "Y"
+    z <- getParty "Z"
+    let citizens = [ x, y, z ]
+    pure Fixture with ..
+    
+onboard : Party -> Party -> ContractId Ballot -> Scenario (ContractId Ballot, ContractId VotingRight)
+onboard g p ballot =
+  do
+    invite <- submit g do exercise ballot Invite with voter = p
+    submit p do exercise invite Accept
+
+acceptBallot : Proposal -> Scenario DecisionOutcome
+acceptBallot proposal = 
+  do
+    Fixture{..} <- fixture
+    ballot <- submit government do create Ballot with government; voters = []; proposal; votes = []
+    (ballot, votingX) <- onboard government x ballot
+    (ballot, votingY) <- onboard government y ballot
+    (ballot, votingZ) <- onboard government z ballot
+    ballot <- submit x do exercise votingX CastVote with ballotCid = ballot; accept = True
+    ballot <- submit y do exercise votingY CastVote with ballotCid = ballot; accept = True
+    ballot <- submit z do exercise votingZ CastVote with ballotCid = ballot; accept = False
+    submit government do exercise ballot Decide
+
+assertConstitution : DecisionOutcome -> Scenario (ContractId Constitution)
+assertConstitution outcome =
+  case outcome of
+    None -> fail "Expected Some outcome, got None"
+    Some either ->
+      case either of
+        Left constitutionId -> pure constitutionId
+        _ -> fail "Expected Left (ContractId Constitution), got Right"
+
+assertConstitutionV2 : DecisionOutcome -> Scenario (ContractId ConstitutionV2)
+assertConstitutionV2 outcome =
+  case outcome of
+    None -> fail "Expected Some outcome, got None"
+    Some either ->
+      case either of
+        Right constitutionId -> pure constitutionId
+        _ -> fail "Expected Right (ContractId ConstitutionV2), got Left"
+
+-- Vote to create constitution
+voteCreateConstitution = scenario do
+  Fixture{..} <- fixture
+  let proposal = CreateConstitution (Constitution with government; citizens; text = "Constitution Text v1"; version = 1)
+  outcome <- acceptBallot proposal
+  constitutionId <- assertConstitution outcome
+  constitution <- submit government do fetch constitutionId
+  assert $ constitution.text == "Constitution Text v1"
+  assert $ constitution.version == 1
+  pure constitutionId
+
+-- Vote to update constitution text
+voteUpdateConstitutionText = scenario do
+  Fixture{..} <- fixture
+  constitutionId <- voteCreateConstitution
+  let proposal = UpdateConstitutionText (constitutionId, "Constitution Text v1.1")
+  outcome <- acceptBallot proposal
+  constitutionId <- assertConstitution outcome
+  constitution <- submit government do fetch constitutionId
+  assert $ constitution.text == "Constitution Text v1.1"
+  assert $ constitution.version == 1
+  pure constitutionId
+
+-- Vote to ugrade constitution contract
+voteUpgradeConstitution = scenario do
+  Fixture{..} <- fixture
+  constitutionId <- voteUpdateConstitutionText
+  let proposal = UpgradeConstitution constitutionId
+  outcome <- acceptBallot proposal
+  constitutionV2Id <- assertConstitutionV2 outcome
+  constitutionV2 <- submit government do fetch constitutionV2Id
+  assert $ constitutionV2.text == "Constitution Text v1.1"
+  assert $ constitutionV2.version == 2
+  pure constitutionV2Id
+
+-- Create a new ballot off ConstitutionV2
+-- We can create the ballot and all voting rights right away using the signatures on ConstitutionV2
+createNewBallotOffConstitution = scenario do
+  Fixture{..} <- fixture
+  constitutionV2Id <- voteUpgradeConstitution
+  -- Now we can create new ballots and voting rights right off the constitution having everyone's signature there
+  let proposal = CreateConstitution (Constitution with government; citizens; text = "Constitution Text v3"; version = 1)
+  submit government do exercise constitutionV2Id CreateBallot with proposal
+
+allScenarios = scenario do
+  voteCreateConstitution
+  voteUpdateConstitutionText
+  voteUpgradeConstitution
+  createNewBallotOffConstitution
+  

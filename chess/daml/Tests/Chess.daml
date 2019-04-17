@@ -1,0 +1,42 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Tests.Chess where
+
+import DA.Assert
+
+import Chess
+import Init
+import Types
+
+takeMove : Scenario (Either (ContractId Result) (ContractId Game))
+  -> (Party, (Text, Int), (Text, Int))
+  -> Scenario (Either (ContractId Result) (ContractId Game))
+takeMove seg m = do
+  eg <- seg
+  case eg of
+    Left _ -> abort "Can't continue won game"
+    Right g -> submit m._1 do
+      exercise g Move with
+        move = ChessMove (uncurry Coord m._2) (uncurry Coord m._3) None None
+
+testFoolsMate = scenario do
+  InitData {..} <- initData
+
+  let
+    moves = [
+      (white, ("G", 2), ("G", 4)),
+      (black, ("E", 7), ("E", 6)),
+      (white, ("F", 2), ("F", 4)),
+      (black, ("D", 8), ("H", 4)),
+      (white, ("E", 1), ("F", 2)),
+      (black, ("H", 4), ("F", 2))
+      ]
+  game <- foldl takeMove (return $ Right game) moves
+
+  win <- case game of
+    Right _ -> abort "Should be a win"
+    Left win -> submit black do fetch win
+
+  win.winner === Some black

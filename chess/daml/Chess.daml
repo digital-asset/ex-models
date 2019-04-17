@@ -1,0 +1,105 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Chess where
+
+import DA.Assert
+
+import Rules.Main
+import Rules.Data
+import Rules.Draw
+import Types
+
+template GameProposal
+  with
+    gameId : GameId
+    proposer : Party
+  where
+    signatory proposer
+
+    let
+      receiver =
+        if proposer == gameId.white
+          then gameId.black
+          else gameId.white
+
+    controller receiver can
+      StartGame : ContractId Game
+        do
+          create Game with
+            gameId
+            state = (Rules.Data.initState ())
+
+template Result
+  with
+    game : Game
+    winner : Optional Party
+  where
+    signatory game.gameId.white, game.gameId.black
+
+template Game
+  with
+    gameId : GameId
+    state : GameState
+  where
+    signatory gameId.white, gameId.black
+
+    let
+      player = if state.player == White then gameId.white else gameId.black
+      opponent = if state.player == White then gameId.black else gameId.white
+
+    controller player can
+      Move : Either (ContractId Result) (ContractId Game)
+        with
+          move : ChessMove
+        do
+          case tryMove state move of
+            Winner _ -> do
+              win <- create Result with winner = Some player; game = this
+              return (Left win)
+            Error e -> abort e
+            NewState ns -> do
+              newGame <- create this with state = ns
+              return (Right newGame)
+
+      ClaimDraw : ContractId Result
+        do
+          case checkDraw state.moves of
+            Left e -> abort e
+            Right False -> abort "Not a draw."
+            Right True -> return ()
+          create Result with
+            game = this
+            winner = None
+
+      Forfeit : ContractId Result
+        do
+          create Result with
+            game = this
+            winner = Some opponent
+
+template DrawProposal
+  with
+    gameId : GameId
+    proposer : Party
+  where
+    signatory proposer
+
+    let
+      receiver =
+        if proposer == gameId.white
+          then gameId.black
+          else gameId.white
+
+    controller receiver can
+      AcceptDraw : ContractId Result
+        with
+          game : ContractId Game
+        do
+          g <- fetch game
+          g.gameId === gameId
+          archive game
+          create Result with
+            game = g
+            winner = None

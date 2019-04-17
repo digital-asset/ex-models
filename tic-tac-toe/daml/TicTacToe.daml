@@ -1,0 +1,97 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module TicTacToe where
+
+import DA.List
+import DA.Optional
+
+count : (a -> Bool) -> [a] -> Int
+count condition list =
+  length $ filter condition list
+
+hasWon : Game -> Party -> Bool
+hasWon game player =
+  let
+    moves = filter (\m -> m.player == player) game.moves
+    hasAllHorizontal i = count (\m -> m.x == i) moves == game.size
+    hasAllVertical i = count (\m -> m.y == i) moves == game.size
+    hasAllDiagonal i = count (\m -> m.y == i && m.x == i) moves == game.size
+    hasAllCounterDiagonal i = count (\m -> m.y == i && m.x == game.size - 1 - i) moves == game.size
+    hasWonHorizontal = any hasAllHorizontal [0 .. game.size - 1]
+    hasWonVertical = any hasAllVertical [0 .. game.size - 1]
+    hasWonDiagonal = any hasAllDiagonal [0 .. game.size - 1]
+    hasWonCounterDiagonal = any hasAllCounterDiagonal [0 .. game.size - 1]
+  in hasWonHorizontal || hasWonVertical || hasWonDiagonal
+
+data Move = Move
+  with
+    player : Party
+    x : Int
+    y : Int
+  deriving (Eq, Show)
+
+data Outcome =
+    Winner Party
+    | Tie
+  deriving (Eq, Show)
+
+type TurnResult = Either (ContractId Result) (ContractId Game)
+
+template GameInvite
+  with
+    player1 : Party
+    player2 : Party
+    size : Int
+  where
+    signatory player1
+    controller player2 can
+      Accept : ContractId Game
+        do
+          create Game with player1; player2; current = player1; moves = []; size
+
+template Game
+  with
+    player1 : Party
+    player2 : Party
+    current : Party
+    moves : [Move]
+    size : Int
+  where
+    signatory player1, player2
+    
+    controller current can
+      Play : TurnResult
+        with
+          x : Int
+          y : Int
+        do
+          let move = Move with player = current; x; y
+          assert $ x >= 0 && x < size
+          assert $ y >= 0 && y < size
+          assert $ isNone $ findIndex (\m -> m.x == x && m.y == y) moves
+          let other = if current == player1 then player2 else player1
+          let game = this with moves = move :: moves; current = other
+          if hasWon game current then
+            do
+              result <- create Result with player1; player2; outcome = Winner current; moves = game.moves; size
+              pure $ Left result
+          else if length moves == size * size then
+            do
+              result <- create Result with player1; player2; outcome = Tie; moves = game.moves; size
+              pure $ Left result
+          else
+            do
+              newGame <- create game
+              pure $ Right newGame
+
+template Result
+  with
+    player1 : Party
+    player2 : Party
+    outcome : Outcome
+    moves : [Move]
+    size : Int
+  where
+    signatory player1, player2

@@ -1,0 +1,33 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Init where
+
+import Chess
+import Types
+
+data InitData = InitData with
+  white : Party
+  black : Party
+  game : ContractId Game
+
+initData = do
+  white <- getParty "Alice"
+  black <- getParty "Bob"
+
+  let
+    gameId = GameId with
+      ref = "game"
+      white
+      black
+
+  prop <- submit white do
+    create GameProposal with
+      proposer = white
+      gameId
+
+  game <- submit black do
+    exercise prop StartGame
+
+  return InitData with ..

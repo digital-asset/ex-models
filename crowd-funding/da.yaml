@@ -1,0 +1,12 @@
+project:
+  sdk-version: 0.12.1
+  scenario: Test:validClaim
+  name: crowd-funding
+  source: daml/Test.daml
+  parties:
+  - Issuer
+  - Originator
+  - A
+  - B
+  - C
+version: 2

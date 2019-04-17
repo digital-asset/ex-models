@@ -1,0 +1,50 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Types where
+
+data GameId = GameId with
+  ref : Text
+  white : Party
+  black : Party
+    deriving (Eq, Show)
+
+data PieceType =
+  Pawn | Rook | Knight | Bishop | Queen | King
+    deriving (Eq, Show, Ord)
+
+data Player =
+  Black | White
+    deriving (Eq, Show, Ord)
+
+data Coord = Coord with
+  col : Text
+  row : Int
+    deriving (Eq, Show, Ord)
+
+data Piece = Piece with
+  coord : Coord
+  tp : PieceType
+  owner : Player
+  moved : Bool
+    deriving (Eq, Show, Ord)
+
+data GameState = GameState with
+  player : Player
+  pieces : [Piece]
+  everCheck : (Bool, Bool)
+  moves : [ChessMove]
+    deriving (Eq, Show)
+
+data ChessMove = ChessMove with
+  from : Coord
+  to : Coord
+  promote : Optional PieceType
+  check : Optional (Coord, Coord)
+    deriving (Eq, Show)
+
+data MoveResult
+  = Winner Player
+  | NewState GameState
+  | Error Text
