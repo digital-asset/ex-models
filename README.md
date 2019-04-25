@@ -43,5 +43,7 @@ A model for a crowd funding campaign where backers commit Ious to a project. The
 ### Governance
 A model demonstrating how on-chain governance can be modeled in DAML. Citizens can vote for the creation of a consititution contract, for the update of the constitution text, or for the upgrade of the constitution contract to a newer version.
 
-[Project Readme](governance/README.md)
+### Option
+A simple European style cash settled option.
 
+[Project Readme](option/README.md)
