@@ -45,3 +45,7 @@ A model demonstrating how on-chain governance can be modeled in DAML. Citizens c
 
 [Project Readme](governance/README.md)
 
+### Option
+A simple European style cash settled option.
+
+[Project Readme](option/README.md)
