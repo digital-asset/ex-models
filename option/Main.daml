@@ -18,7 +18,6 @@ data OptionData = OptionData
     expiry : Date
   deriving (Eq, Show)
 
-
 template Quote
   with
     quoteId : Text
@@ -32,13 +31,13 @@ template Quote
     signatory issuer
     observer client :: observers
 
-    controller client can
-      Fill : (ContractId Option, ContractId CashEntry)
-        do
-          assertMsg "status ok" (status == Firm)
-          optionCid <- create Option with issuer; client; optionData; observers
-          cashEntryCid <- create CashEntry with issuer; client; amount = -price; observers
-          return (optionCid, cashEntryCid)
+    choice Fill : (ContractId Option, ContractId CashEntry)
+      controller client
+      do
+        assertMsg "status ok" (status == Firm)
+        optionCid <- create Option with issuer; client; optionData; observers
+        cashEntryCid <- create CashEntry with issuer; client; amount = -price; observers
+        return (optionCid, cashEntryCid)
 
 
 template Option
@@ -51,17 +50,17 @@ template Option
     signatory issuer
     observer client :: observers
 
-    controller issuer can
-      Expire : ContractId CashEntry
-        with fixingCid : ContractId Fixing
-        do
-          assertAfter $ time optionData.expiry 0 0 0
-          fixing <- fetch fixingCid
-          assertMsg "calculation agent ok" (fixing.issuer == issuer)
-          assertMsg "underlying matches" (fixing.underlying == optionData.underlying)
-          assertMsg "date matches" (fixing.date == optionData.expiry)
-          let amount = max 0.0 $ fixing.value - optionData.strike
-          create CashEntry with issuer; client; amount; observers
+    choice Expire : ContractId CashEntry
+      with fixingCid : ContractId Fixing
+      controller issuer
+      do
+        assertAfter $ time optionData.expiry 0 0 0
+        fixing <- fetch fixingCid
+        assertMsg "calculation agent ok" (fixing.issuer == issuer)
+        assertMsg "underlying matches" (fixing.underlying == optionData.underlying)
+        assertMsg "date matches" (fixing.date == optionData.expiry)
+        let amount = max 0.0 $ fixing.value - optionData.strike
+        create CashEntry with issuer; client; amount; observers
 
 
 template CashEntry
@@ -100,24 +99,25 @@ template Agent
     agent : Party
   where
     signatory issuer
+    observer agent
 
-    controller agent can
-      nonconsuming Agent_Quote : (ContractId Pricing, ContractId Quote)
-        with
-          quoteId : Text
-          client : Party
-          optionData : OptionData
-          pricingData : PricingData
-          price : Decimal
-          trader : Party
-          observers : [Party]
-        do
-          pricingCid <- create Pricing with
-            quoteId; issuer; pricingData; observers = [agent, trader]
-          quoteCid <- create Quote with
-            quoteId; issuer; client; optionData; price; status = Indicative
-            observers = agent :: (trader :: observers)
-          return (pricingCid, quoteCid)
+    nonconsuming choice Agent_Quote : (ContractId Pricing, ContractId Quote)
+      with
+        quoteId : Text
+        client : Party
+        optionData : OptionData
+        pricingData : PricingData
+        price : Decimal
+        trader : Party
+        observers : [Party]
+      controller agent
+      do
+        pricingCid <- create Pricing with
+          quoteId; issuer; pricingData; observers = [agent, trader]
+        quoteCid <- create Quote with
+          quoteId; issuer; client; optionData; price; status = Indicative
+          observers = agent :: (trader :: observers)
+        return (pricingCid, quoteCid)
 
 
 template Pricing
@@ -137,17 +137,18 @@ template Trader
     trader : Party
   where
     signatory issuer
+    observer trader
 
-    controller trader can
-      nonconsuming Trader_Quote : ContractId Quote
-        with
-          quoteCid : ContractId Quote
-          price : Decimal
-        do
-          quote <- fetchAndArchive quoteCid
-          assertMsg "issuer ok" (quote.issuer == issuer)
-          create quote with status = Firm; price
-
+    nonconsuming choice Trader_Quote : ContractId Quote
+      with
+        quoteCid : ContractId Quote
+        price : Decimal
+      controller trader
+      do
+        quote <- fetchAndArchive quoteCid
+        assertMsg "issuer ok" (quote.issuer == issuer)
+        assertMsg "status ok" (quote.status == Indicative)
+        create quote with status = Firm; price
 
 template Clerk
   with
@@ -155,14 +156,15 @@ template Clerk
     clerk : Party
   where
     signatory client
+    observer clerk
 
-    controller clerk can
-      nonconsuming Clerk_Request : ContractId Request
-        with
-          quoteCid : ContractId Quote
-          observers : [Party]
-        do
-          create Request with client; quoteCid; observers
+    nonconsuming choice Clerk_Request : ContractId Request
+      with
+        quoteCid : ContractId Quote
+        observers : [Party]
+      controller clerk
+      do
+        create Request with client; quoteCid; observers
 
 
 template Supervisor
@@ -171,14 +173,15 @@ template Supervisor
     supervisor : Party
   where
     signatory client
+    observer supervisor
 
-    controller supervisor can
-      nonconsuming Supervisor_Accept : (ContractId Option, ContractId CashEntry)
-        with requestCid : ContractId Request
-        do
-          request <- fetchAndArchive requestCid
-          assertMsg "client ok" (request.client == client)
-          exercise request.quoteCid Fill
+    nonconsuming choice Supervisor_Accept : (ContractId Option, ContractId CashEntry)
+      with requestCid : ContractId Request
+      controller supervisor
+      do
+        request <- fetchAndArchive requestCid
+        assertMsg "client ok" (request.client == client)
+        exercise request.quoteCid Fill
 
 
 template Request
