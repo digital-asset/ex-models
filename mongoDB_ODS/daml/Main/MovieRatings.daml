@@ -1,0 +1,58 @@
+-- Copyright 2019 Digital Asset (Switzerland) GmbH and/or its affiliates.
+
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+
+--     http://www.apache.org/licenses/LICENSE-2.0
+
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+
+daml 1.2 module Main.MovieRatings where
+import Main.DataTypes
+
+
+template Analyst
+  with
+    analyst: Party
+  where
+    signatory analyst
+
+    controller analyst can
+      nonconsuming CreateRater: (ContractId Person)
+        with
+          person: Party
+          personInfo: PersonInfo
+        do
+          create Person with
+            analyst; person; personInfo
+
+      nonconsuming SubmitRating: (ContractId Rating)
+        with
+          person: Party
+          rating: RatingInfo
+        do
+          create Rating with
+            person; analyst; rating
+
+
+template Person
+  with
+    analyst: Party
+    person: Party
+    personInfo: PersonInfo
+  where
+    signatory analyst
+
+
+template Rating
+  with
+    person: Party
+    analyst: Party
+    rating: RatingInfo
+  where
+    signatory analyst

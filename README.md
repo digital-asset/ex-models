@@ -49,3 +49,8 @@ A model demonstrating how on-chain governance can be modeled in DAML. Citizens c
 A simple European style cash settled option.
 
 [Project Readme](option/README.md)
+
+### MongoDB OSD
+MongoDB ODS & Analytics on the DA Platform.
+
+[Project Readme](mongoDB_ODS/README.md)

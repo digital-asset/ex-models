@@ -1,0 +1,73 @@
+-- Copyright 2019 Digital Asset (Switzerland) GmbH and/or its affiliates.
+
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+
+--     http://www.apache.org/licenses/LICENSE-2.0
+
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+
+daml 1.2 module Tests where
+import DA.Date
+import Main.DataTypes
+import Main.MovieRatings
+
+
+testMovieRatings = scenario do
+  analyst <- getParty "Data_Scientist"
+  person1_id <- getParty "p1"
+
+  let
+    person1_pInfo = PersonInfo with
+      name = Name with
+        title = Mr
+        firstname = "Jeff"
+        lastname = "Kennedy"
+      gender = Male
+      address = Address with
+        street = "1107 Chester Road"
+        city = "Stevenage"
+        state = "Herefordshire"
+        postcode = "GU7 2FG"
+      email = "jeff.kennedy@example.com"
+      dob = datetime 1965 Dec 26 11 12 20
+    
+    m1422_rating = RatingInfo with
+      id = 1422
+      rating = 3.0
+      date = datetime 1998 Jan 17 00 01 41
+      name = "Murder at 1600"
+      year = 1997
+      genres = ["Crime", "Drama", "Mystery", "Thriller"]
+
+    m160836_rating = RatingInfo with
+      id = 160836
+      rating = 3.0
+      date = datetime 2017 May 03 21 05 14
+      name = "Hazard"
+      year = 2005
+      genres = ["Action", "Drama", "Thriller"]
+  
+  ac <- submit analyst do
+    create Analyst with
+      analyst
+  
+  submit analyst do
+    exercise ac CreateRater with
+      person = person1_id
+      personInfo = person1_pInfo
+  
+  submit analyst do
+    exercise ac SubmitRating with
+      person = person1_id
+      rating = m1422_rating
+  
+  submit analyst do
+    exercise ac SubmitRating with
+      person = person1_id
+      rating = m160836_rating
