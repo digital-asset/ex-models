@@ -1,3 +1,6 @@
+# Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Copyright 2019 Digital Asset (Switzerland) GmbH and/or its affiliates.
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,3 +48,4 @@ def submit_rating(submitter, endpoint, person, rating):
       return (master.exercise("SubmitRating", { "person": person, "rating": rating }))
   
   network.run_until_complete()
+

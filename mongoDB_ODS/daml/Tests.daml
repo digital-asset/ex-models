@@ -1,3 +1,6 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
 -- Copyright 2019 Digital Asset (Switzerland) GmbH and/or its affiliates.
 
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -71,3 +74,4 @@ testMovieRatings = scenario do
     exercise ac SubmitRating with
       person = person1_id
       rating = m160836_rating
+

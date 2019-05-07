@@ -1,3 +1,6 @@
+# Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Copyright 2019 Digital Asset (Switzerland) GmbH and/or its affiliates.
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -132,3 +135,4 @@ if __name__ == "__main__":
       submit_rating(mq, rating, submit_user, conf['ledger']['endpoint'])
   
   print("Data load has been dispatched successfully, contracts will appear on the ledger asynchronously.")
+

@@ -1,3 +1,6 @@
+# Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Copyright 2019 Digital Asset (Switzerland) GmbH and/or its affiliates.
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,3 +41,4 @@ class JSONEncoder():
         new_cdata[k] = self._type_changer(v)
     
     return new_cdata
+
