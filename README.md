@@ -54,3 +54,7 @@ A simple European style cash settled option.
 MongoDB ODS & Analytics on the DA Platform.
 
 [Project Readme](mongoDB_ODS/README.md)
+
+### License
+Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
