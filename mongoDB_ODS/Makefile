@@ -1,6 +1,3 @@
-# Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 project_name	:=	"MongoDB_ODS"
 docker_file	:=	"docker-compose.yaml"
 source_file	:=	"ml-latest-small.zip"
