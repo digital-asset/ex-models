@@ -7,7 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Overview
 
+The aim of this demo is to investigate
 
+- The suitability of using MongoDB as on ODS, storing information from the DA Ledger event stream as documents in a database
+- MongoDB's GUI and native aggregation pipeline tools, and how they can be used to drill down into the data
+
+To power the demo, sample movie ratings data have been used to provide a suitably large sample set which is both diverse, but can be aggregated upwards into summary information. Each movie rating record also contains randomly generated submitter information, which can be used to try and map behaviour to demographics.
 
 ## Workflow
 
@@ -26,6 +31,17 @@ The workflow is as follows:
 1. Payload generation process ("_datagen nanobot_")
 1. (Rabbit)MQ Pub/Sub queue for the listener nanobot to 
 1. Subscriber service ("_listener nanobot_") to consume an event stream from the ledger and create documents within MongoDB
+
+### Dependencies ##
+
+|  |
+|---|
+| GNU Make |
+| Docker (Community Edition) |
+| `docker-compose` _(From GitHub, not `apt`)_ |
+| Python Pipenv _(via `pip install`)_ |
+| DAZL _(Tested for version `5.5.2`)_ |
+| MongoDB Compass (Stable) |
 
 ## The demo
 
