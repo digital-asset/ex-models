@@ -12,7 +12,19 @@ The aim of this demo is to investigate
 - The suitability of using MongoDB as on ODS, storing information from the DA Ledger event stream as documents in a database
 - MongoDB's GUI and native aggregation pipeline tools, and how they can be used to drill down into the data
 
+An ODS is an intermediate database for storing state, and in the context of the DA Ledger is a good way to k=have a local representation of the Active Contract Store (ACS) for rendering views, calculating a net position, etc. rather than hitting the ledger each time.
+
+MongoDB is a document database with JSON document format; the DA Ledger document model as per the Python Application Frameworks is also JSON, so it makes sense to use MongoDB for the ODS, with the added benefit of powerful and sophisticated queries and aggregation in real-time.
+
+### The Data Set
+
 To power the demo, sample movie ratings data have been used to provide a suitably large sample set which is both diverse, but can be aggregated upwards into summary information. Each movie rating record also contains randomly generated submitter information, which can be used to try and map behaviour to demographics.
+
+There are two primary record types - `Person` and `Rating` - which capture the rater and the rating. A rater can have multiple ratings, and movies to which the ratings pertain to are not unique. 
+
+There is also a single `Analyst` record, which is the operater user under whom records and ratings are submitted. This is also the user under whom the listener nanobot runs to subscribe to the ledger event stream
+
+## Architecture
 
 The key elements to the demo are listed below:
 
@@ -23,11 +35,7 @@ The key elements to the demo are listed below:
 1. A RabbitMQ Pub/Sub queue, running in a Docker container, to accept the documents from datagen, and also handle back-pressure during the data load
 1. Command Submitter workers to pop the documents from the MQ and submit commands to the DA Ledger, utilizing the Digital Asset Application Frameworks
 
-There are two primary record types - `Person` and `Rating` - which capture the rater and the rating. A rater can have multiple ratings, and movies to which the ratings pertain to are not unique. 
-
-There is also a single `Analyst` record, which is the operater user under whom records and ratings are submitted. This is also the user under whom the listener nanobot runs to subscribe to the ledger event stream
-
-## Architecture
+Diagramatically:
 
 ![Architecture](images/MongoDB_demo_arch-Architecture_setup.png)
 
@@ -208,7 +216,7 @@ A few sample native aggregation operations are below:
     { "_id" : "Gibson", "count" : 6 }
     ```
 
-1. Find the top rater was:
+1. Find the top rater:
     ```sh
     > db.Data_Scientist_acs.aggregate([
       { $match: { "contractType": "Main.MovieRatings:Rating" }}, 
@@ -290,7 +298,7 @@ A potential architecture is below:
 
 This has not been implemented and remains to be done by the user.
 
-## Links ##
+## Links
 
 - DAML: <https://daml.com>
 - `docker`: <https://docs.docker.com/install/linux/docker-ce/ubuntu/>
@@ -299,3 +307,7 @@ This has not been implemented and remains to be done by the user.
 - Random user generation: <https://randomuser.me/documentation>
 - Movie ratings data set: <https://grouplens.org/datasets/movielens/>
 - MongoDB Manual - Aggregation <https://docs.mongodb.com/manual/aggregation>
+
+## Contributing
+
+We welcome suggestions for improvements via issues, or direct contributions via pull requests.
