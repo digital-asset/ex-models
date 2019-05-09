@@ -7,17 +7,17 @@ import yaml
 from dazl import simple_client, Network
 from pymongo import MongoClient
 from bson.errors import InvalidDocument
-from json_encoder import JSONEncoder
+from types_translater import MongoDBTypesTranslater
 
 
 def upsertIntoODS(db, dictionary, contractid, template, cdata):
   try:
-    db[dictionary].insert_one({ 'contractId': str(contractid), 'contractType': str(template), 'payload': JSONEncoder().recode(cdata) })
+    db[dictionary].insert_one({ 'contractId': str(contractid), 'contractType': str(template), 'payload': MongoDBTypesTranslater().translate(cdata) })
   except InvalidDocument as e:
     print("Insertion of contract " + str(contractid) + " failed; " + str(e))
     pass
 
-
+translate
 def removeFromODS(db, dictionary, contractid):
   try:
     db[dictionary].delete_one({ 'contractId': str(contractid) })

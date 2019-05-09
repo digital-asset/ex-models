@@ -4,7 +4,7 @@
 from decimal import Decimal
 
 
-class JSONEncoder():
+class MongoDBTypesTranslater():
   def _type_changer(self, arg):
     if type(arg) == Decimal:
       return float(arg)
@@ -17,7 +17,7 @@ class JSONEncoder():
     else:
       return arg
 
-  def recode(self, cdata):
+  def translate(self, cdata):
     new_cdata = dict()
 
     for k, v in cdata.items():
