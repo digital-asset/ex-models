@@ -11,7 +11,17 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Workflow
 
-### Elements
+The workflow is as follows:
+
+1. blah
+1. blah blah
+1. yak yak yak, blah blah ...
+
+### Architecture
+
+![Analytics-driven automatic decision execution](/images/MongoDB_demo_arch-Architecture_setup.png)
+
+### Key Elements
 
 1. Payload generation process ("_datagen nanobot_")
 1. (Rabbit)MQ Pub/Sub queue for the listener nanobot to 
@@ -86,9 +96,13 @@ The runtime, naturally, is dependent on how beefy your system setup is and the n
 
 ## Extending the Demo
 
-One of the aims of this demo was to investigate the feasibility 
+One of the aims of this demo was to investigate the feasibility of using MongoDB's native aggregation tools - with or without further enrichment - to drive automatic decision-making which results in new commands being submitted to the DA Ledger. 
 
-![Analytics-driven automatic decision execution](/images/MongoDB_demo_arch-Virtuous circle.png)
+A potential architecture is below:
+
+![Analytics-driven automatic decision execution](/images/MongoDB_demo_arch-Virtuous_circle.png)
+
+This has not been implemented and remains to be done by the user.
 
 ## Links ##
 
