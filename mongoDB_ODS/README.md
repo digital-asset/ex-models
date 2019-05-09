@@ -88,7 +88,8 @@ The runtime, naturally, is dependent on how beefy your system setup is and the n
 
 One of the aims of this demo was to investigate the feasibility 
 
-![GitHub Logo](images/MongoDB_demo_arch-Virtuous circle.png)
+![GitHub Logo](/images/logo.png)
+<!-- (/images/MongoDB_demo_arch-Virtuous circle.png) -->
 
 ## Links ##
 
