@@ -19,7 +19,7 @@ The workflow is as follows:
 
 ### Architecture
 
-![Architecture](/images/MongoDB_demo_arch-Architecture_setup.png)
+![Architecture](images/MongoDB_demo_arch-Architecture_setup.png)
 
 ### Key Elements
 
@@ -102,7 +102,7 @@ One of the aims of this demo was to investigate the feasibility of using MongoDB
 
 A potential architecture is below:
 
-![Analytics-driven automatic decision execution](/images/MongoDB_demo_arch-Virtuous_circle.png)
+![Analytics-driven automatic decision execution](images/MongoDB_demo_arch-Virtuous_circle.png)
 
 This has not been implemented and remains to be done by the user.
 
