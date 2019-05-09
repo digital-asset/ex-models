@@ -51,6 +51,6 @@ A simple European style cash settled option.
 [Project Readme](option/README.md)
 
 ### MongoDB ODS
-A short demo covering the use of MongoDB as an ODS to capture streamed events from the DA ledger, and run analytics using native MongoDB aggregation pipelines.
+A simplified demo covering the use of MongoDB as an ODS to capture streamed events from the DA ledger, and run analytics using native MongoDB aggregation pipelines. Also touches on (Rabbit)MQ pub-sub for handling large volumes of writes to the ledger when loading data.
 
 [Project Readme](mongoDB_ODS/README.md)
