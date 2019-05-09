@@ -50,7 +50,7 @@ A simple European style cash settled option.
 
 [Project Readme](option/README.md)
 
-### MongoDB OSD
-MongoDB ODS & Analytics on the DA Platform.
+### MongoDB ODS
+A short demo covering the use of MongoDB as an ODS to capture streamed events from the DA ledger, and run analytics using native MongoDB aggregation pipelines.
 
 [Project Readme](mongoDB_ODS/README.md)
