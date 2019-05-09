@@ -22,7 +22,7 @@ class MongoDBTypesTranslater():
 
     for k, v in cdata.items():
       if type(v) == dict:
-        new_cdata[k] = self.recode(v)
+        new_cdata[k] = self.translate(v)
       else:
         new_cdata[k] = self._type_changer(v)
     
