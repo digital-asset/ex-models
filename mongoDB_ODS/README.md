@@ -131,9 +131,154 @@ From MongoDB's own manual:
 
 >"Aggregation operations process data records and return computed results. Aggregation operations group values from multiple documents together, and can perform a variety of operations on the grouped data to return a single result. MongoDB provides three ways to perform aggregation: the aggregation pipeline, the map-reduce function, and single purpose aggregation methods."
 
-This demo focuses on Aggregation Pipelines, the preferred method for investigating data.
+This demo focuses on Aggregation Pipelines, the preferred method for investigating data. In a nutshell - records in a collection go through a multi-stage pipeline, where in each stage query and filtering operations re performed on the data, and the results are transformed into aggregated sets that input into the next stage of the pipeline - and so forth until the final result is arrived at. 
 
+Other pipeline operations provide tools for grouping, sorting and counting records by specific fields, and also basic statistical functions like averages, summations, etc.
 
+Connect to the MongoDB database and list available databases:
+
+```sh
+$ make db-cli
+docker run -i -t --rm mongo:latest sh -c "mongo 172.17.0.1"
+MongoDB shell version v4.0.9
+connecting to: mongodb://172.17.0.1:27017/test?gssapiServiceName=mongodb
+...
+> show databases
+admin          0.000GB
+config         0.000GB
+local          0.000GB
+movie_ratings  0.000GB
+> 
+```
+
+The ODS is in the `movie_ratings` database - use this database:
+
+```sh
+> use movie_ratings
+switched to db movie_ratings
+> 
+```
+
+A few sample native aggregation operations are below: 
+
+1. Find all contract types, and the number of contracts for each:
+    ```sh
+    > db.Data_Scientist_acs.aggregate([
+      { $group: { _id: "$contractType", count: { $sum: 1 } } }
+    ])
+    { "_id" : "Main.MovieRatings:Rating", "count" : 100836 }
+    { "_id" : "Main.MovieRatings:Person", "count" : 610 }
+    { "_id" : "Main.MovieRatings:Analyst", "count" : 1 }
+    ```
+
+1. Break down `Person` records by gender:
+    ```sh
+    > db.Data_Scientist_acs.aggregate([
+      { $match: { "contractType": "Main.MovieRatings:Person" }}, 
+      { $group: { _id: "$payload.personInfo.gender", count: { $sum: 1 } } }
+    ])
+    { "_id" : { "Male" : {  } }, "count" : 292 }
+    { "_id" : { "Female" : {  } }, "count" : 318 }
+    ```
+
+1. Break down `Person` records by title:
+    ```sh
+    > db.Data_Scientist_acs.aggregate([
+      { $match: { "contractType": "Main.MovieRatings:Person" }}, 
+      { $group: { _id: "$payload.personInfo.name.title", count: { $sum: 1 } } }
+    ])
+    { "_id" : { "Mrs" : {  } }, "count" : 118 }
+    { "_id" : { "Ms" : {  } }, "count" : 91 }
+    { "_id" : { "Mr" : {  } }, "count" : 292 }
+    { "_id" : { "Miss" : {  } }, "count" : 109 }
+    ```
+
+1. Top 5 most common last name:
+    ```sh
+    > db.Data_Scientist_acs.aggregate([
+      { $match: { "contractType": "Main.MovieRatings:Person" }}, 
+      { $group: { _id: "$payload.personInfo.name.lastname", count: { $sum: 1 } } }, 
+      { $sort: { count: -1 } },
+      { $limit: 5 }
+    ])
+    { "_id" : "Ward", "count" : 8 }
+    { "_id" : "Diaz", "count" : 8 }
+    { "_id" : "Patterson", "count" : 7 }
+    { "_id" : "Burke", "count" : 6 }
+    { "_id" : "Gibson", "count" : 6 }
+    ```
+
+1. Find the top rater was:
+    ```sh
+    > db.Data_Scientist_acs.aggregate([
+      { $match: { "contractType": "Main.MovieRatings:Rating" }}, 
+      { $group: { _id: "$payload.person", count: { $sum: 1 }}}, 
+      { $sort: { count: -1 } }
+    ])
+    { "_id" : "p414", "count" : 666 }
+    ```
+
+1. Ratings breakdown for the top rater:
+    ```sh
+    > db.Data_Scientist_acs.aggregate([
+      { $match: { $and: [ 
+        { "contractType": "Main.MovieRatings:Rating" }, 
+        { "payload.person": "p414"} 
+      ] } }, 
+      { $group: { _id: "$payload.rating.rating", count: { $sum:1 } } }, 
+      { $sort: { _id: -1 } }
+    ])
+    { "_id" : 5, "count" : 51 }
+    { "_id" : 4.5, "count" : 20 }
+    { "_id" : 4, "count" : 244 }
+    { "_id" : 3.5, "count" : 69 }
+    { "_id" : 3, "count" : 133 }
+    { "_id" : 2.5, "count" : 36 }
+    { "_id" : 2, "count" : 97 }
+    { "_id" : 1.5, "count" : 7 }
+    { "_id" : 1, "count" : 8 }
+    { "_id" : 0.5, "count" : 1 }
+    ```
+
+1. Genres:
+    ```sh
+    > db.Data_Scientist_acs.aggregate([
+      { $match: { $and: [ 
+        { "contractType": "Main.MovieRatings:Rating" }, 
+        { "payload.person": "p414"} 
+      ] } }, 
+      { $unwind: "$payload.rating.genres" }, 
+      { $group: { _id: "$payload.rating.genres", count: { $sum:1 } } }, 
+      { $sort: { count: -1 } } 
+    ])
+    { "_id" : "Drama", "count" : 345 }
+    { "_id" : "Comedy", "count" : 274 }
+    { "_id" : "Action", "count" : 148 }
+    { "_id" : "Thriller", "count" : 139 }	
+    { "_id" : "Romance", "count" : 119 }
+    { "_id" : "Adventure", "count" : 98 }
+    { "_id" : "Crime", "count" : 87 }
+    { "_id" : "Sci-Fi", "count" : 72 }
+    { "_id" : "Fantasy", "count" : 41 }
+    { "_id" : "Children", "count" : 36 }
+    { "_id" : "Musical", "count" : 32 }
+    { "_id" : "War", "count" : 29 }
+    { "_id" : "Mystery", "count" : 29 }
+    { "_id" : "Animation", "count" : 25 }
+    { "_id" : "Documentary", "count" : 25 }
+    { "_id" : "Horror", "count" : 20 }
+    { "_id" : "IMAX", "count" : 16 }
+    { "_id" : "Western", "count" : 13 }
+    { "_id" : "(no genres listed)", "count" : 1 }
+    { "_id" : "Film-Noir", "count" : 1 }
+    ```
+
+To disconnect, use the key combination `Ctrl+D`:
+
+```sh
+> 
+bye
+```
 
 ## Extending the Demo
 
