@@ -1,96 +1,94 @@
-# MongoDB ODS & Analytics on the DA Platform #
-
 ```
 Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 SPDX-License-Identifier: Apache-2.0
 ```
 
-## Overview ##
+# MongoDB ODS & Analytics on the DA Ledger
 
-DAML is the perfect "gatekeeper" language for data persisted to a ledger, as it by designs both defines a strict data format and ensures that only conformant data ever gets persisted - in the form of a contract. 
+## Overview
 
-This removes a large part of the ETL burden, and allows data coming off a ledger to be input straight into MongoDB, with all MongoDB's native tools immediately available.
 
-The aim of this demo is to investigate how easily MongoDB can be purposed as a data store for records coming off the ledger, and how easily insights can be gained from the data. 
 
-## The data ##
+## Workflow
 
-The movie ratings data set is ideal to use to explore MongoDB's aggregation operations as it contains multiple entries for a given movie, which allows for both exploratory investigation using Compass, and also drilling down using the command line client, to harness the power of pipelines. 
+### Elements
 
-## Dependencies ##
+1. Payload generation process ("_datagen nanobot_")
+1. (Rabbit)MQ Pub/Sub queue for the listener nanobot to 
+1. Subscriber service ("_listener nanobot_") to consume an event stream from the ledger and create documents within MongoDB
 
-| Required |
-|---|
-| GNU Make |
-| Docker (Community Edition) |
-| `docker-compose` _(From GitHub, not `apt`)_ |
-| Python Pipenv _(via `pip install`)_ |
-| DAZL _(Tested for version `5.5.2`)_ |
-| MongoDB Compass (Stable) |
+## The demo
 
-## Setup and Data loading ##
+### Setup the Environment
 
-The project is managed by a `Makefile`. Initially one needs to pull in the required data sources, docker images and dependencies, via:
+1. Pull in the required data sources, docker images and dependencies by running:
+    ```sh
+    $ make setup
+    ```
 
-```sh
-$ make setup
-```
+### Running the Demo
 
-To spin everything up and start the MongoDB and RabbitMQ containers, opens ports, compiles DARs, spin up the data submitter pipeline and spin up a Navigator instance on `TCP/4000`, run:
+1. Spin everything up and start the MongoDB and RabbitMQ containers, open ports, compile DARs, spin up the data submitter pipeline and spin up a Navigator instance on `TCP/4000`. To do this, run:
 
-```sh
-$ make start
-```
+    ```sh
+    $ make start
+    ```
 
-To setup a nanobot to read off the ledger and populate MongoDB, in a new terminal, run:
+1. Set up the subscriber service listener nanobot to read off the ledger and populate MongoDB - open a new terminal and run:
 
-```sh
-$ pipenv run python ./app/operator_listener.py --config config.yaml --user Data_Scientist
-```
+    ```sh
+    $ pipenv run python ./app/operator_listener.py --config config.yaml --user Data_Scientist
+    ```
 
-And finally, to start the data loader, in a new terminal, run:
+1. Open a new terminal and start the datagen nanobot loader by running:
+    ```sh
+    $ pipenv run python generators/operator_loader.py --config config.yaml --user Data_Scientist --test NUM
+    ```
 
-```sh
-$ pipenv run python generators/operator_loader.py --config config.yaml --user Data_Scientist --test NUM
-```
+    where `NUM` specifies the number of ratings to submit. This will also create the initial _Data_Scientist_ user, under whom all rater and rating information is loaded onto the ledger.
 
-where `NUM` specifies the number of ratings to submit. This will also create the initial _analyst_ user, under whom all rater and rating information is loaded onto the ledger.
+    If you don't include `--test NUM`, the entire ratings matrix is loaded: 100,836 entries. Please see **Performance Considerations** below.
 
-If `--test NUM` is not specified, then the entire ratings matrix is loaded, wich is 100,836 entries. Please see **Performance Considerations** below.
+1. To shut down the submitter, the sandbox, the containers, and Navigator, run:
 
-## Monitoring ##
+    ```sh
+    $ make stop
+    ```
 
-Navigator can be used to inspect the ledger and the contracts being created. Go to <http://localhost:4000> and login as user **Data_Scientist** (the only option in the dropdown).
+1. To do a clean up on the runtime logs, run:
 
-## MongoDB Analytics ##
+    ```sh
+    $ make clean
+    ```
 
-This is where the fun begins! See - [MongoDB Aggregation Operations](docs/MongoDB_Aggregation_Operations.pdf) for more details.
+1. To do a final clean up on the data source directory as well, run:
 
-## Teardown ##
+    ```sh
+    $ make data-clean
+    ```
 
-```sh
-$ make stop
-```
+### Performance Considerations
 
-will shutdown the submitter, kill the sandbox and stop the containers and to stop Navigator.
+The data loader is resource-intensive, and works in two phases:
 
-To do a clean up on the runtime logs, run:
+1. Queue Setup - for each rating in the set:
+    1. An user record is generated (if the user doesn't already exist) and pushed onto the MQ
+    1. A movie rating record is generated and pushed onto the MQ 
+1. Data Submission
+    1. Records are popped from the MQ, commands are generated and submitted
 
-```sh
-$ make clean
-```
+Predictably, the total runtime depends on the value of `NUM`; for example - submitting 100K+ ratings (and corresponding users) takes around fifteen minutes to setup the queue, but a LOT longer (in the order of hours) for the submission to complete. 
 
-To do a final clean up on the data source directory as well, run:
+The runtime, naturally, is dependent on how beefy your system setup is and the number of cores and RAM available to you. It's difficult to determine the exact time breakdown, but different combinations of software and settings do make an impact. The thread multiplier settings in `config.yaml` are fairly aggressive and pretty much run all cores at 100%, de-tuning that could alleviate some performance lag and lock-ups.
 
-```sh
-$ make data-clean
-```
+## MongoDB Aggregation Pipeline Operations
 
-## Performance considersations ##
 
-This is a lengthy and very resource-intensive process that can create 100K+ ratings (and corresponding users as necessary), and it takes approximately 15 minutes to orchestrate the setup, and a LOT longer for the load to complete - in the order of hours. This is, naturally, dependent on how beefy your system setup is and the number of cores and RAM available to you.
+## Extending the Demo
 
-It's difficult to determine the granularity of the time breakdown, but when last tested it was the gRPC libraries which appeared to be the problem - or some combination software and hardware. Furthermore, the thread multiplier settings in `config.yaml` are fairly aggressive and pretty much run all cores at 100%, de-tuning that somewhat could alleviate performance lag and lock-ups.
+One of the aims of this demo was to investigate the feasibility 
+
+![GitHub Logo](images/MongoDB_demo_arch-Virtuous circle.png)
 
 ## Links ##
 
