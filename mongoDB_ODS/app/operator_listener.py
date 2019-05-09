@@ -17,7 +17,6 @@ def upsertIntoODS(db, dictionary, contractid, template, cdata):
     print("Insertion of contract " + str(contractid) + " failed; " + str(e))
     pass
 
-translate
 def removeFromODS(db, dictionary, contractid):
   try:
     db[dictionary].delete_one({ 'contractId': str(contractid) })
