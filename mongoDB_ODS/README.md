@@ -19,7 +19,7 @@ The workflow is as follows:
 
 ### Architecture
 
-![Analytics-driven automatic decision execution](/images/MongoDB_demo_arch-Architecture_setup.png)
+![Architecture](/images/MongoDB_demo_arch-Architecture_setup.png)
 
 ### Key Elements
 
@@ -58,6 +58,8 @@ The workflow is as follows:
     where `NUM` specifies the number of ratings to submit. This will also create the initial _Data_Scientist_ user, under whom all rater and rating information is loaded onto the ledger.
 
     If you don't include `--test NUM`, the entire ratings matrix is loaded: 100,836 entries. Please see **Performance Considerations** below.
+
+    To inspect the ledger and the contracts being created, use Navigator. Go to <http://localhost:4000> and login as user **Data_Scientist** (the only option in the dropdown).
 
 1. To shut down the submitter, the sandbox, the containers, and Navigator, run:
 
