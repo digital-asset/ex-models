@@ -1,0 +1,17 @@
+# Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+threads:
+  multiplier: 8
+
+generator:
+  users_url: https://randomuser.me/api/?nat=gb&results=1&exc=picture,registered,id,phone,cell,nat
+  ratings_file: data/ml-latest-small/ratings.csv
+  movies_file: data/ml-latest-small/movies.csv
+
+ledger:
+  endpoint: grpc://localhost:3999
+
+ods:
+  endpoint: mongodb://localhost:27017/
+  database: movie_ratings
