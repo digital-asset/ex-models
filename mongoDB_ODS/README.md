@@ -12,7 +12,7 @@ The aim of this demo is to investigate
 - The suitability of using MongoDB as on ODS, storing information from the DA Ledger event stream as documents in a database
 - MongoDB's GUI and native aggregation pipeline tools, and how they can be used to drill down into the data
 
-An ODS is an intermediate database for storing state, and in the context of the DA Ledger is a good way to k=have a local representation of the Active Contract Store (ACS) for rendering views, calculating a net position, etc. rather than hitting the ledger each time.
+An ODS is an intermediate database for storing state, and in the context of the DA Ledger is a good way to have a local representation of the Active Contract Store (ACS) for rendering views, calculating a net position, etc. rather than hitting the ledger each time.
 
 MongoDB is a document database with JSON document format; the DA Ledger document model as per the Python Application Frameworks is also JSON, so it makes sense to use MongoDB for the ODS, with the added benefit of powerful and sophisticated queries and aggregation in real-time.
 
