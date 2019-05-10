@@ -1,0 +1,196 @@
+daml 1.2
+module Airline where
+
+import DA.Assert
+import DA.List
+import DA.Optional
+import DA.TextMap as TM
+
+data Class = Coach | Business | First deriving (Eq, Show, Ord)
+
+template FlightInvite
+  with
+    ticket : Ticket
+  where
+    signatory ticket.airline
+    observer ticket.passenger
+
+    choice Accept_Invite : (ContractId Ticket, ContractId Flight)
+      with
+        flightCid : ContractId Flight
+      controller ticket.passenger
+      do
+        flight <- fetch flightCid
+        ticket.flightNumber === flight.flightNumber
+        ticket.airline === flight.airline
+
+        flightCid <- exercise flightCid Onboard with
+          passenger = ticket.passenger
+        ticketCid <- create ticket
+
+        return (ticketCid, flightCid)
+
+
+template Ticket
+  with
+    ticketClass : Class
+    ticketRef : Text
+    flightNumber : Text
+    airline : Party
+    passenger : Party
+    seatNumber : Optional Text
+    seatChoice : Bool
+  where
+    signatory airline, passenger
+
+    choice CheckIn : (ContractId Ticket, ContractId Flight)
+      with
+        flightCid : ContractId Flight
+        seat : Text
+      controller if seatChoice then passenger else airline
+      do
+        flight <- fetch flightCid
+        None === seatNumber
+        flight.flightNumber === flightNumber
+        flight.airline === airline
+        assert $ fromSome (TM.lookup seat flight.seatClasses) <= ticketClass
+        newTicketCid <- create this with seatNumber = Some seat
+        newFlightCid <- exercise flightCid AssignSeat with
+          passenger; seat; ticketRef
+        return (newTicketCid, newFlightCid)
+
+template Flight
+  with
+    seatClasses : TextMap Class
+    allocation : TextMap Text
+    flightNumber : Text
+    airline : Party
+    invitedPassengers : [Party]
+    passengers : [Party]
+  where
+    signatory airline, passengers
+    observer invitedPassengers
+
+    choice AssignSeat : ContractId Flight
+      with
+        passenger : Party
+        ticketRef : Text
+        seat : Text
+      controller [passenger, airline]
+      do
+        None === TM.lookup seat allocation
+
+        create this with
+          allocation = insert seat ticketRef allocation
+
+    choice Onboard : ContractId Flight
+      with
+        passenger : Party
+      controller [airline, passenger]
+      do
+        assert (passenger `elem` invitedPassengers)
+        create this with passengers = passenger :: passengers
+
+    choice TakeOff : ()
+      controller airline
+      do
+        length passengers === TM.size allocation
+        return ()
+
+dajet = scenario do
+  da <- getParty "DA"
+  passengers@[tim, zohar, eric, shaul, yuval]
+    <- mapA getParty ["Tim", "Zohar", "Eric", "Shaul", "Yuval"]
+  let
+    flightNumber = "DA Force One"
+    classes = [Coach, Coach, Business, Business, First]
+    seatClasses = TM.fromList
+      [ ("1A", First)
+      , ("1B", First)
+      , ("2A", Business)
+      , ("2B", Business)
+      , ("3A", Coach)
+      , ("3B", Coach) ]
+    tickets = map
+      (\(seq, passenger, ticketClass) ->
+        Ticket with
+          ticketClass
+          ticketRef =  show seq
+          flightNumber
+          airline = da
+          passenger
+          seatNumber = None
+          seatChoice = ticketClass > Coach
+      )
+      (zip3 [1..5] passengers classes)
+
+  (inviteCids, flightCid) <- submit da do
+    inviteCids <- mapA (\ticket -> create FlightInvite with ticket) tickets
+    flightCid <- create Flight with
+      seatClasses
+      allocation = TM.empty
+      flightNumber
+      airline = da
+      invitedPassengers = passengers
+      passengers = []
+    return (inviteCids, flightCid)
+
+  (ticketCids, flightCid) <- foldr
+    (\(passenger, inviteCid) acc -> do
+      (ticketCids, flightCid) <- acc
+      submit passenger do
+        (ticketCid, flightCid) <- exercise inviteCid Accept_Invite with flightCid
+        return (ticketCid :: ticketCids, flightCid) )
+    (return ([], flightCid))
+    (zip passengers inviteCids)
+
+  submitMustFail da do exercise flightCid TakeOff
+  submitMustFail tim do
+    exercise (ticketCids !! 0) CheckIn with
+      flightCid
+      seat = "1A"
+  submitMustFail da do
+    exercise (ticketCids !! 0) CheckIn with
+      flightCid
+      seat = "1A"
+  submitMustFail eric do
+    exercise (ticketCids !! 2) CheckIn with
+      flightCid
+      seat = "1A"
+
+  (_, flightCid) <- submit da do
+    exercise (ticketCids !! 0) CheckIn with
+      flightCid
+      seat = "3A"
+
+  submitMustFail da do
+    exercise (ticketCids !! 1) CheckIn with
+      flightCid
+      seat = "3A"
+
+  (_, flightCid) <- submit da do
+    exercise (ticketCids !! 1) CheckIn with
+      flightCid
+      seat = "3B"
+
+  submitMustFail da do
+    exercise (ticketCids !! 2) CheckIn with
+      flightCid
+      seat = "2A"
+
+  (_, flightCid) <- submit eric do
+    exercise (ticketCids !! 2) CheckIn with
+      flightCid
+      seat = "2A"
+
+  (_, flightCid) <- submit shaul do
+    exercise (ticketCids !! 3) CheckIn with
+      flightCid
+      seat = "2B"
+
+  (_, flightCid) <- submit yuval do
+    exercise (ticketCids !! 4) CheckIn with
+      flightCid
+      seat = "1A"
+
+  submit da do exercise flightCid TakeOff
