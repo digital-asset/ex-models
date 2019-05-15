@@ -4,6 +4,9 @@
 daml 1.2
 module Governance where
 
+import DA.Next.Set as S
+import DA.List as L
+
 data Proposal
   = CreateConstitution Constitution
   | UpdateConstitutionText (ContractId Constitution, Text)
@@ -32,109 +35,98 @@ execute _ (UpgradeConstitution constitutionId) =
 template Constitution
   with
     government : Party
-    citizens : [Party]
+    citizens : Set Party
     text : Text
     version : Int
   where
     signatory government, citizens
-    controller government, citizens can
-      UpdateText : ContractId Constitution
-        with newText : Text
-        do create this with text = newText
+
+    choice UpdateText : ContractId Constitution
+      with newText : Text
+      controller government, citizens
+      do create this with text = newText
 
 template ConstitutionV2
   with
     government : Party
-    citizens : [Party]
+    citizens : Set Party
     text : Text
     version : Int
   where
     signatory government, citizens
-    controller government, citizens can
-      UpgradeV2 : ContractId ConstitutionV2
-        with newText : Text
-        do create this with text = newText
-    controller government can
-      nonconsuming CreateBallot : (ContractId Ballot, [ContractId VotingRight])
-        with proposal : Proposal
-        do
-          ballot <- create Ballot with government; voters = citizens; proposal; votes = []
-          votingRights <- mapA (\c -> create VotingRight with government; voter = c; proposal) citizens
-          pure (ballot, votingRights)
+
+    choice UpgradeV2 : ContractId ConstitutionV2
+      with newText : Text
+      controller government, citizens
+      do create this with text = newText
+
+    nonconsuming choice CreateBallot : BallotKey
+      with
+        name : Text
+        proposal : Proposal
+      controller government
+      do
+        let ballot = Ballot with government; name; proposal; voters = citizens; voted = S.empty; votes = []
+        create ballot
+        pure (key ballot)
 
 template ConstituationUpgrade
   with
     government : Party
-    citizens : [Party]
+    citizens : Set Party
   where
     signatory government, citizens
-    controller government, citizens can
-      Execute : ContractId ConstitutionV2
-        with constitutionId : ContractId Constitution
-        do
-          constitution <- fetch constitutionId
-          let constitutionV2 = ConstitutionV2 with government; citizens; text = constitution.text; version = constitution.version + 1
-          archive constitutionId
-          create constitutionV2
+
+    choice Execute : ContractId ConstitutionV2
+      with constitutionId : ContractId Constitution
+      controller government, citizens
+      do
+        constitution <- fetch constitutionId
+        let constitutionV2 = ConstitutionV2 with government; citizens; text = constitution.text; version = constitution.version + 1
+        archive constitutionId
+        create constitutionV2
+
+type BallotKey = (Party, Text)
 
 template Ballot
   with
     government : Party
-    voters : [Party]
+    name : Text
     proposal : Proposal
+    voters : Set Party
+    voted : Set Party
     votes : [Bool]
   where
-    signatory government, voters
+    signatory government, voted
+    observer voters
 
-    controller government can
-      Invite : ContractId VotingInvite
-        with voter : Party
-        do create VotingInvite with ballot = this; voter
+    key (government, name) : BallotKey
+    maintainer government
 
-      AddVote : ContractId Ballot
-        with
-          accept : Bool
-        do
-          create this with votes = accept :: votes
+    choice Add : ()
+      with voter : Party
+      controller government
+      do
+        create this with voters = S.insert voter voters
+        pure ()
 
-      Decide : DecisionOutcome
-        do
-          assert $ length voters == length votes
-          let yays = length $ filter (\v -> v) votes
-          let nays = length $ filter (\v -> not v) votes
-          assert $ yays /= nays
-          let accept = yays > nays
-          execute accept proposal
+    choice Decide : DecisionOutcome
+      controller government
+      do
+        assertMsg "All voters must vote" $ S.size voters == length votes
+        let yays = length $ L.filter (\v -> v) votes
+        let nays = length $ L.filter (\v -> not v) votes
+        assertMsg "Cannot decide on tie" $ yays /= nays
+        let accept = yays > nays
+        execute accept proposal
 
-template VotingInvite
-  with
-    ballot : Ballot
-    voter : Party
-  where
-    signatory ballot.government, ballot.voters
-    controller voter can
-      Accept : (ContractId Ballot, ContractId VotingRight)
-        do
-          b <- create ballot with voters = voter :: ballot.voters
-          votingRight <- create VotingRight with government = ballot.government, voter; proposal = ballot.proposal
-          pure (b, votingRight)
-          
-template VotingRight
-  with
-    government : Party
-    voter : Party
-    proposal : Proposal
-  where
-    signatory government, voter
-
-    controller voter can
-      CastVote : ContractId Ballot
-        with
-          ballotCid : ContractId Ballot
-          accept : Bool
-        do
-          ballot <- fetch ballotCid
-          assert $ government == ballot.government
-          assert $ any (== voter) ballot.voters
-          assert $ proposal == ballot.proposal
-          exercise ballotCid AddVote with accept
+    choice Vote : ()
+      with
+        voter : Party
+        accept : Bool
+      controller voter
+      do
+        assertMsg "Voter not added" $ S.member voter voters
+        assertMsg "Voter already voted" $ not $ S.member voter voted
+        create this with voted = S.insert voter voted; votes = accept :: votes
+        pure ()
