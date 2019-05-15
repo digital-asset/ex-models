@@ -45,3 +45,27 @@ A model demonstrating how on-chain governance can be modeled in DAML. Citizens c
 
 [Project Readme](governance/README.md)
 
+### Option
+A simple European style cash settled option.
+
+[Project Readme](option/README.md)
+
+### MongoDB ODS
+A simplified demo covering the use of MongoDB as an ODS to capture streamed events from the DA ledger, and run analytics using native MongoDB aggregation pipelines. Also touches on (Rabbit)MQ pub-sub for handling large volumes of writes to the ledger when loading data.
+
+[Project Readme](mongoDB_ODS/README.md)
+
+### Chess
+A chess game
+
+[Project Readme](chess/README.md)
+
+### Onboarding
+A simple task-list app with composable sub-tasks, designed to check off onboarding tasks.
+
+[Project Readme](onboarding/README.md)
+
+### Airline seat allocation
+A lean, but somewhat privacy-preserving process to issue airline tickets and allocate seats.
+
+[Project Readme](airline/README.md)

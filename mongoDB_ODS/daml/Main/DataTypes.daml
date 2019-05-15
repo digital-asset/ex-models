@@ -1,0 +1,47 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2 module Main.DataTypes where
+
+
+data Title
+    = Miss
+    | Mr
+    | Mrs
+    | Ms
+  deriving(Eq, Show, Ord)
+
+data Name = Name with
+    title: Title
+    firstname: Text
+    lastname: Text
+  deriving(Eq, Show, Ord)
+
+data Gender 
+    = Female
+    | Male 
+  deriving(Eq, Show, Ord)
+
+data Address = Address with
+    street: Text
+    city: Text
+    state: Text
+    postcode: Text
+  deriving(Eq, Show, Ord)
+
+data PersonInfo = PersonInfo with
+    name: Name
+    gender: Gender
+    address: Address
+    email: Text
+    dob: Time
+  deriving(Eq, Show, Ord)
+
+data RatingInfo = RatingInfo with
+    id: Int
+    rating: Decimal
+    date: Time
+    name: Text
+    year: Int
+    genres: [Text]
+  deriving(Eq, Show, Ord)

@@ -1,0 +1,271 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Main where
+
+import DA.Date as D
+import DA.Time as T
+
+data QuoteStatus = Indicative | Firm
+  deriving (Eq, Show)
+
+data OptionData = OptionData
+  with
+    isin : Text
+    underlying : Text
+    strike : Decimal
+    expiry : Date
+  deriving (Eq, Show)
+
+template Quote
+  with
+    quoteId : Text
+    issuer : Party
+    client : Party
+    optionData : OptionData
+    price : Decimal
+    status : QuoteStatus
+    observers : [Party]
+  where
+    signatory issuer
+    observer client :: observers
+
+    choice Fill : (ContractId Option, ContractId CashEntry)
+      controller client
+      do
+        assertMsg "status ok" (status == Firm)
+        optionCid <- create Option with issuer; client; optionData; observers
+        cashEntryCid <- create CashEntry with issuer; client; amount = -price; observers
+        return (optionCid, cashEntryCid)
+
+
+template Option
+  with
+    issuer : Party
+    client : Party
+    optionData : OptionData
+    observers : [Party]
+  where
+    signatory issuer
+    observer client :: observers
+
+    choice Expire : ContractId CashEntry
+      with fixingCid : ContractId Fixing
+      controller issuer
+      do
+        assertAfter $ time optionData.expiry 0 0 0
+        fixing <- fetch fixingCid
+        assertMsg "calculation agent ok" (fixing.issuer == issuer)
+        assertMsg "underlying matches" (fixing.underlying == optionData.underlying)
+        assertMsg "date matches" (fixing.date == optionData.expiry)
+        let amount = max 0.0 $ fixing.value - optionData.strike
+        create CashEntry with issuer; client; amount; observers
+
+
+template CashEntry
+  with
+    issuer : Party
+    client : Party
+    amount : Decimal
+    observers : [Party]
+  where
+    signatory issuer
+    observer client :: observers
+
+
+template Fixing
+  with
+    issuer : Party
+    underlying : Text
+    date : Date
+    value : Decimal
+    observers : [Party]
+  where
+    signatory issuer
+    observer observers
+
+
+data PricingData = PricingData
+  with
+    commission : Decimal
+    overhedge : Decimal
+  deriving (Eq, Show)
+
+
+template Agent
+  with
+    issuer : Party
+    agent : Party
+  where
+    signatory issuer
+    observer agent
+
+    nonconsuming choice Agent_Quote : (ContractId Pricing, ContractId Quote)
+      with
+        quoteId : Text
+        client : Party
+        optionData : OptionData
+        pricingData : PricingData
+        price : Decimal
+        trader : Party
+        observers : [Party]
+      controller agent
+      do
+        pricingCid <- create Pricing with
+          quoteId; issuer; pricingData; observers = [agent, trader]
+        quoteCid <- create Quote with
+          quoteId; issuer; client; optionData; price; status = Indicative
+          observers = agent :: (trader :: observers)
+        return (pricingCid, quoteCid)
+
+
+template Pricing
+  with
+    quoteId : Text
+    issuer : Party
+    pricingData : PricingData
+    observers : [Party]
+  where
+    signatory issuer
+    observer observers
+
+
+template Trader
+  with
+    issuer : Party
+    trader : Party
+  where
+    signatory issuer
+    observer trader
+
+    nonconsuming choice Trader_Quote : ContractId Quote
+      with
+        quoteCid : ContractId Quote
+        price : Decimal
+      controller trader
+      do
+        quote <- fetchAndArchive quoteCid
+        assertMsg "issuer ok" (quote.issuer == issuer)
+        assertMsg "status ok" (quote.status == Indicative)
+        create quote with status = Firm; price
+
+template Clerk
+  with
+    client : Party
+    clerk : Party
+  where
+    signatory client
+    observer clerk
+
+    nonconsuming choice Clerk_Request : ContractId Request
+      with
+        quoteCid : ContractId Quote
+        observers : [Party]
+      controller clerk
+      do
+        create Request with client; quoteCid; observers
+
+
+template Supervisor
+  with
+    client : Party
+    supervisor : Party
+  where
+    signatory client
+    observer supervisor
+
+    nonconsuming choice Supervisor_Accept : (ContractId Option, ContractId CashEntry)
+      with requestCid : ContractId Request
+      controller supervisor
+      do
+        request <- fetchAndArchive requestCid
+        assertMsg "client ok" (request.client == client)
+        exercise request.quoteCid Fill
+
+
+template Request
+  with
+    client : Party
+    quoteCid : ContractId Quote
+    observers : [Party]
+  where
+    signatory client
+    observer observers
+
+
+fetchAndArchive : Template a => ContractId a -> Update a
+fetchAndArchive cid = do
+  c <- fetch cid
+  exercise cid Archive
+  return c
+
+
+discloseQuote : ContractId Quote -> [Party] -> Update (ContractId Quote)
+discloseQuote quoteCid observers = do
+  quote <- fetch quoteCid
+  archive quoteCid
+  create quote with observers = quote.observers ++ observers
+
+main = scenario do
+
+  issuer <- getParty "AcmeBank"
+  client <- getParty "WonkaCorp"
+
+  let underlying = "SP5"
+  let expiry = D.date 2019 Feb 8
+
+  let optionData = OptionData with isin = "123"; underlying; strike = 2500.0; expiry
+  let pricingData = PricingData with commission = 20.0; overhedge = 0.05
+
+  passToDate $ D.date 2019 Jan 25
+  quoteCid <- submit issuer do
+    create Quote with
+      quoteId = "123_0"; issuer; client; optionData
+      price = 55.0; status = Firm; observers = []
+  (optionCid, cashEntry1Cid) <- submit client do exercise quoteCid Fill
+
+  passToDate $ D.date 2019 Feb 8
+  fixingCid <- submit issuer do
+    create Fixing with
+      issuer; underlying; date = expiry
+      value = 2600.0; observers = [client]
+  cashEntry2Cid <- submit issuer do exercise optionCid Expire with fixingCid
+
+  submit issuer do
+    cashEntry1 <- fetch cashEntry1Cid
+    assertMsg "issuer ok" $ cashEntry1.issuer == issuer
+    assertMsg "client ok" $ cashEntry1.client == client
+    assertMsg "amount ok" $ cashEntry1.amount == -55.0
+
+    cashEntry2 <- fetch cashEntry2Cid
+    assertMsg "issuer ok" $ cashEntry2.issuer == issuer
+    assertMsg "client ok" $ cashEntry2.client == client
+    assertMsg "amount ok" $ cashEntry2.amount == 100.0
+
+
+  agent <- getParty "Alice"
+  trader <- getParty "Tom"
+  agentCid <- submit issuer do create Agent with issuer; agent
+  traderCid <- submit issuer do create Trader with issuer; trader
+
+  (pricingCid, quoteCid) <- submit agent do
+    exercise agentCid Agent_Quote with
+      quoteId = "123_0"; client; optionData; pricingData
+      price = 50.0; trader; observers = []
+  quoteCid <- submit trader do
+    exercise traderCid Trader_Quote with quoteCid; price = 55.0
+
+
+  clerk <- getParty "Charlie"
+  supervisor <- getParty "Sarah"
+  clerkCid <- submit client do create Clerk with client; clerk
+  supervisorCid <- submit client do create Supervisor with client; supervisor
+
+  quoteCid <- submit issuer do discloseQuote quoteCid [clerk, supervisor]
+  requestCid <- submit clerk do
+    exercise clerkCid Clerk_Request with quoteCid; observers = [supervisor]
+  (optionCid, cashEntry1Cid) <- submit supervisor do
+    exercise supervisorCid Supervisor_Accept with requestCid
+
+  return ()
