@@ -99,8 +99,8 @@ template Flight
 
 dajet = scenario do
   da <- getParty "DA"
-  passengers@[tim, zohar, eric, shaul, yuval]
-    <- mapA getParty ["Tim", "Zohar", "Eric", "Shaul", "Yuval"]
+  passengers@[p1, p2, p3, p4, p5]
+    <- mapA getParty ["P1", "P2", "P3", "P4", "P5"]
   let
     flightNumber = "DA Force One"
     classes = [Coach, Coach, Business, Business, First]
@@ -115,7 +115,7 @@ dajet = scenario do
       (\(seq, passenger, ticketClass) ->
         Ticket with
           ticketClass
-          ticketRef =  show seq
+          ticketRef = show seq
           flightNumber
           airline = da
           passenger
@@ -145,7 +145,7 @@ dajet = scenario do
     (zip passengers inviteCids)
 
   submitMustFail da do exercise flightCid TakeOff
-  submitMustFail tim do
+  submitMustFail p1 do
     exercise (ticketCids !! 0) CheckIn with
       flightCid
       seat = "1A"
@@ -153,7 +153,7 @@ dajet = scenario do
     exercise (ticketCids !! 0) CheckIn with
       flightCid
       seat = "1A"
-  submitMustFail eric do
+  submitMustFail p2 do
     exercise (ticketCids !! 2) CheckIn with
       flightCid
       seat = "1A"
@@ -178,17 +178,17 @@ dajet = scenario do
       flightCid
       seat = "2A"
 
-  (_, flightCid) <- submit eric do
+  (_, flightCid) <- submit p3 do
     exercise (ticketCids !! 2) CheckIn with
       flightCid
       seat = "2A"
 
-  (_, flightCid) <- submit shaul do
+  (_, flightCid) <- submit p4 do
     exercise (ticketCids !! 3) CheckIn with
       flightCid
       seat = "2B"
 
-  (_, flightCid) <- submit yuval do
+  (_, flightCid) <- submit p5 do
     exercise (ticketCids !! 4) CheckIn with
       flightCid
       seat = "1A"

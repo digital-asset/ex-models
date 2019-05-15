@@ -1,0 +1,11 @@
+project:
+  sdk-version: 0.12.17
+  scenario: Airline:dajet
+  name: airline
+  source: daml/Airline.daml
+  parties:
+  - Originator
+  - A
+  - B
+  - C
+version: 2
