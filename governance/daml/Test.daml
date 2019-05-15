@@ -4,6 +4,7 @@
 daml 1.2
 module Test where
 
+import DA.Next.Set as S
 import Governance
 
 data Fixture = Fixture with
@@ -11,7 +12,8 @@ data Fixture = Fixture with
   x : Party
   y : Party
   z : Party
-  citizens : [Party]
+  citizens : Set Party
+  name : Text
 
 fixture : Scenario Fixture
 fixture =
@@ -20,27 +22,24 @@ fixture =
     x <- getParty "X"
     y <- getParty "Y"
     z <- getParty "Z"
-    let citizens = [ x, y, z ]
+    let citizens = S.fromList [ x, y, z ]
+    let name = "TestBallot"
     pure Fixture with ..
     
-onboard : Party -> Party -> ContractId Ballot -> Scenario (ContractId Ballot, ContractId VotingRight)
-onboard g p ballot =
-  do
-    invite <- submit g do exercise ballot Invite with voter = p
-    submit p do exercise invite Accept
-
 acceptBallot : Proposal -> Scenario DecisionOutcome
 acceptBallot proposal = 
   do
     Fixture{..} <- fixture
-    ballot <- submit government do create Ballot with government; voters = []; proposal; votes = []
-    (ballot, votingX) <- onboard government x ballot
-    (ballot, votingY) <- onboard government y ballot
-    (ballot, votingZ) <- onboard government z ballot
-    ballot <- submit x do exercise votingX CastVote with ballotCid = ballot; accept = True
-    ballot <- submit y do exercise votingY CastVote with ballotCid = ballot; accept = True
-    ballot <- submit z do exercise votingZ CastVote with ballotCid = ballot; accept = False
-    submit government do exercise ballot Decide
+    let ballot = Ballot with government; name; proposal; voters = S.empty; voted = S.empty; votes = []
+    let ballotKey = key ballot
+    submit government do create ballot
+    submit government do exerciseByKey @Ballot ballotKey Add with voter = x
+    submit government do exerciseByKey @Ballot ballotKey Add with voter = y
+    submit government do exerciseByKey @Ballot ballotKey Add with voter = z
+    submit x do exerciseByKey @Ballot ballotKey Vote with voter = x; accept = True
+    submit y do exerciseByKey @Ballot ballotKey Vote with voter = y; accept = True
+    submit z do exerciseByKey @Ballot ballotKey Vote with voter = z; accept = False
+    submit government do exerciseByKey @Ballot ballotKey Decide
 
 assertConstitution : DecisionOutcome -> Scenario (ContractId Constitution)
 assertConstitution outcome =
@@ -102,7 +101,7 @@ createNewBallotOffConstitution = scenario do
   constitutionV2Id <- voteUpgradeConstitution
   -- Now we can create new ballots and voting rights right off the constitution having everyone's signature there
   let proposal = CreateConstitution (Constitution with government; citizens; text = "Constitution Text v3"; version = 1)
-  submit government do exercise constitutionV2Id CreateBallot with proposal
+  submit government do exercise constitutionV2Id CreateBallot with name = "NewBallot"; proposal
 
 allScenarios = scenario do
   voteCreateConstitution

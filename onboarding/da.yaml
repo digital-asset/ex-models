@@ -1,0 +1,10 @@
+project:
+  sdk-version: 0.12.17
+  scenario: Onboard:onboarding
+  name: onboarding
+  source: daml/Onboard.daml
+  parties:
+  - HR
+  - Alice
+  - Supervisor
+version: 2

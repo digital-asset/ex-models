@@ -1,0 +1,9 @@
+project:
+  sdk-version: 0.12.17
+  scenario: Main:main
+  name: option
+  source: daml/Main.daml
+  parties:
+  - AcmeBank
+  - WonkaCorp
+version: 2

@@ -1,10 +1,9 @@
 project:
   sdk-version: 0.12.17
-  scenario: Test:validClaim
-  name: crowd-funding
-  source: daml/Test.daml
+  scenario: Airline:dajet
+  name: airline
+  source: daml/Airline.daml
   parties:
-  - Issuer
   - Originator
   - A
   - B

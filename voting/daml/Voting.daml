@@ -4,72 +4,67 @@
 daml 1.2
 module Voting where
 
+import DA.Next.Set as S
+import DA.List as L
+
 data Proposal = Proposal
   with
     proposer : Party
     text : Text
   deriving (Eq, Show)
 
+type BallotKey = (Party, Proposal)
+
 template Ballot
   with
     government : Party
     proposal : Proposal
-    voters : [Party]
+    voters : Set Party
+    voted : Set Party
     votes : [Bool]
   where
-    signatory government
+    signatory government, voted
     observer voters
 
-    controller government can
-      AddVoter : (ContractId VotingRight, ContractId Ballot)
-        with voter : Party
-        do
-          votingRight <- create VotingRight with government; voter; proposal
-          ballot <- create this with voters = voter :: voters
-          return (votingRight, ballot)
+    key (government, proposal) : BallotKey
+    maintainer government
 
-      AddVote : ContractId Ballot
-        with
-          accept : Bool
-        do
-          create this with votes = accept :: votes
+    choice Add : ()
+      with voter : Party
+      controller government
+      do
+        create this with voters = S.insert voter voters
+        pure ()
 
-      Decide : ContractId Decision
-        do
-          assert $ length voters == length votes
-          let yays = length $ filter (\v -> v) votes
-          let nays = length $ filter (\v -> not v) votes
-          assert $ yays /= nays
-          let accept = yays > nays
-          create Decision with government; proposal; accept
+    choice Decide : ContractId Decision
+      controller government
+      do
+        assertMsg "All voters must vote" $ size voters == length votes
+        let yays = length $ L.filter (\v -> v) votes
+        let nays = length $ L.filter (\v -> not v) votes
+        assertMsg "Cannot decide on tie" $ yays /= nays
+        let accept = yays > nays
+        create Decision with ..
 
-template VotingRight
-  with
-    government : Party
-    voter : Party
-    proposal : Proposal
-  where
-    signatory government
-
-    controller voter can
-      CastVote : ContractId Ballot
-        with
-          ballotCid : ContractId Ballot
-          accept : Bool
-        do
-          ballot <- fetch ballotCid
-          assert $ government == ballot.government
-          assert $ any (== voter) ballot.voters
-          assert $ proposal == ballot.proposal
-          exercise ballotCid AddVote with accept
+    choice Vote : ()
+      with
+        voter : Party
+        accept : Bool
+      controller voter
+      do
+        assertMsg "Voter not added" $ member voter voters
+        assertMsg "Voter already voted" $ not $ member voter voted
+        create this with voted = S.insert voter voted; votes = accept :: votes
+        pure ()
 
 template Decision
   with
     government : Party
     proposal : Proposal
+    voters : Set Party
     accept : Bool
   where
-    signatory government
+    signatory government, voters
 
 validVote = scenario do
   g <- getParty "Government"
@@ -78,12 +73,13 @@ validVote = scenario do
   c <- getParty "C"
   p <- getParty "Proposer"
   let proposal = Proposal with proposer = p; text = "My Proposal"
-  ballot <- submit g do create Ballot with government = g; proposal; voters = []; votes = []
-  (vra, ballot) <- submit g do exercise ballot AddVoter with voter = a
-  (vrb, ballot) <- submit g do exercise ballot AddVoter with voter = b
-  (vrc, ballot) <- submit g do exercise ballot AddVoter with voter = c
-  ballot <- submit a do exercise vra CastVote with ballotCid = ballot; accept = True
-  ballot <- submit b do exercise vrb CastVote with ballotCid = ballot; accept = True
-  ballot <- submit c do exercise vrc CastVote with ballotCid = ballot; accept = False
-  decision <- submit g do exercise ballot Decide
+  let ballotKey = (g, proposal)
+  submit g do create Ballot with government = g; proposal; voters = S.empty; voted = S.empty; votes = []
+  submit g do exerciseByKey @Ballot ballotKey Add with voter = a
+  submit g do exerciseByKey @Ballot ballotKey Add with voter = b
+  submit g do exerciseByKey @Ballot ballotKey Add with voter = c
+  submit a do exerciseByKey @Ballot ballotKey Vote with voter = a; accept = True
+  submit b do exerciseByKey @Ballot ballotKey Vote with voter = b; accept = True
+  submit c do exerciseByKey @Ballot ballotKey Vote with voter = c; accept = True
+  decision <- submit g do exerciseByKey @Ballot ballotKey Decide
   return ()
