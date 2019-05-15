@@ -1,0 +1,99 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module MultisigSubset where
+
+import DA.Next.Set as S
+
+template Agreement
+  with
+    signatories : Set Party
+    observers : Set Party
+  where
+    signatory signatories
+    observer observers
+
+    choice Sign : ContractId Agreement
+      with signer : Party
+      controller signer
+      do
+        assert $ S.member signer observers
+        create this with signatories = S.insert signer signatories
+
+    choice ArchiveWithTwoSignatures : ()
+      with authorizers : S.Set Party
+      controller authorizers
+      do
+        assert $ S.size authorizers >= 2
+        assert $ all (\a -> S.member a signatories) (S.toList authorizers)
+        pure ()
+    
+    choice ArchiveWithThreeSignatures : ()
+      with authorizers : S.Set Party
+      controller authorizers
+      do
+        assert $ S.size authorizers >= 3
+        assert $ all (\a -> S.member a signatories) (S.toList authorizers)
+        pure ()
+
+template ArchivalRequest
+  with
+    signatories : Set Party
+    observers : Set Party
+  where
+    signatory signatories
+    observer observers
+
+    choice ArchivalRequest_Sign : ContractId ArchivalRequest
+      with signer : Party
+      controller signer
+      do
+        assert $ S.member signer observers
+        create this with signatories = S.insert signer signatories
+
+    choice ArchiveWithTwo : ()
+      with
+        actor : Party
+        agreementId : ContractId Agreement
+      controller actor
+      do
+        assert $ S.member actor signatories
+        exercise agreementId ArchiveWithTwoSignatures with authorizers = signatories
+
+    choice ArchiveWithThree : ()
+      with
+        actor : Party
+        agreementId : ContractId Agreement
+      controller actor
+      do
+        assert $ S.member actor signatories
+        exercise agreementId ArchiveWithThreeSignatures with authorizers = signatories
+
+archiveWithTwo = scenario do
+  a <- getParty "A"
+  b <- getParty "B"
+  c <- getParty "C"
+  d <- getParty "D"
+  agrId <- submit a do create Agreement with signatories = S.fromList [a]; observers = S.fromList [a, b, c, d]
+  agrId <- submit b do exercise agrId Sign with signer = b
+  agrId <- submit c do exercise agrId Sign with signer = c
+  agrId <- submit d do exercise agrId Sign with signer = d
+  reqId <- submit a do create ArchivalRequest with signatories = S.fromList [a]; observers = S.fromList [a, b, c, d]
+  reqId <- submit b do exercise reqId ArchivalRequest_Sign with signer = b
+  submit b do exercise reqId ArchiveWithTwo with actor = b; agreementId = agrId
+
+archiveWithThree = scenario do
+  a <- getParty "A"
+  b <- getParty "B"
+  c <- getParty "C"
+  d <- getParty "D"
+  agrId <- submit a do create Agreement with signatories = S.fromList [a]; observers = S.fromList [a, b, c, d]
+  agrId <- submit b do exercise agrId Sign with signer = b
+  agrId <- submit c do exercise agrId Sign with signer = c
+  agrId <- submit d do exercise agrId Sign with signer = d
+  reqId <- submit a do create ArchivalRequest with signatories = S.fromList [a]; observers = S.fromList [a, b, c, d]
+  reqId <- submit b do exercise reqId ArchivalRequest_Sign with signer = b
+  submitMustFail b do exercise reqId ArchiveWithThree with actor = b; agreementId = agrId
+  reqId <- submit c do exercise reqId ArchivalRequest_Sign with signer = c
+  submit b do exercise reqId ArchiveWithThree with actor = b; agreementId = agrId

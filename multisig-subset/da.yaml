@@ -1,0 +1,11 @@
+project:
+  sdk-version: 0.12.17
+  scenario: MultisigSubset:archiveWithThree
+  name: multisig-subset
+  source: daml/MultisigSubset.daml
+  parties:
+  - A
+  - B
+  - C
+  - D
+version: 2
