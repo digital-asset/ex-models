@@ -4,6 +4,7 @@
 daml 1.2
 module Broadcast where
 
+import DA.Action
 
 data Something = Something with
   deriving (Eq, Show)
@@ -144,10 +145,9 @@ test_broadcast = scenario do
       submit broadcaster do
         exercise bcCid BroadcastUpdate with
           newPayload = Something with
-    addAndUpdate (sBcCid : Scenario (ContractId Broadcast)) subscriber = do
-      bcCid <- sBcCid
+    addAndUpdate (bcCid : ContractId Broadcast) subscriber = do
       newBcCid <- addSubscriber subscriber bcCid
       updateData newBcCid
       return newBcCid
 
-  foldl addAndUpdate (return bcCid) subscribers
+  foldlA addAndUpdate bcCid subscribers
