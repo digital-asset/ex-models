@@ -20,13 +20,13 @@ data SubscriptionKey = SubscriptionKey with
 
 template BroadcastData
   with
-    broadcastKey : BroadcastKey
+    broadcast : BroadcastKey
     payload : Something
   where
-    signatory broadcastKey.broadcaster
+    signatory broadcast.broadcaster
 
-    key broadcastKey : BroadcastKey
-    maintainer broadcastKey.broadcaster
+    key broadcast : BroadcastKey
+    maintainer broadcast.broadcaster
 
 template BroadcastSubscription
   with
@@ -50,19 +50,14 @@ template BroadcastSubscription
             currentDataCid = newDataCid
             currentData = newData
 
-      nonconsuming Divulge : BroadcastData
-        with
-          newDataCid : ContractId BroadcastData
-        do fetch newDataCid
-
 template SubscriptionRequest
   with
-    broadcastKey : BroadcastKey
+    broadcast : BroadcastKey
     subscriber : Party
   where
     signatory subscriber
 
-    controller broadcastKey.broadcaster can
+    controller broadcast.broadcaster can
       AcceptSubscription : ContractId BroadcastSubscription
         with
           currentDataCid : ContractId BroadcastData
@@ -71,22 +66,22 @@ template SubscriptionRequest
           currentData <- fetch currentDataCid
           create BroadcastSubscription with
             subscription = SubscriptionKey with
-              broadcast = broadcastKey
+              broadcast
               subscriber
             currentDataCid
             currentData
 
 template Broadcast
   with
-    broadcastKey : BroadcastKey
+    broadcast : BroadcastKey
     subscribers : [Party]
   where
-    signatory broadcastKey.broadcaster
+    signatory broadcast.broadcaster
 
-    key broadcastKey : BroadcastKey
-    maintainer broadcastKey.broadcaster
+    key broadcast : BroadcastKey
+    maintainer broadcast.broadcaster
 
-    controller broadcastKey.broadcaster can
+    controller broadcast.broadcaster can
       nonconsuming BroadcastUpdate : [ContractId BroadcastSubscription]
         with
           newPayload : Something
@@ -122,25 +117,25 @@ test_broadcast = scenario do
   subscribers <- mapA getParty $ map (\i -> "subscriber" <> show i) [1..5]
 
   let
-    broadcastKey = BroadcastKey with
+    broadcast = BroadcastKey with
       broadcaster
       id = "Broadcast"
 
   dataCid <- submit broadcaster do
     create BroadcastData with
-      broadcastKey
+      broadcast
       payload = Something with
 
   bcCid <- submit broadcaster do
     create Broadcast with
-      broadcastKey
+      broadcast
       subscribers = []
 
   let
     addSubscriber subscriber (bcCid : ContractId Broadcast) = do
       reqCid <- submit subscriber do
         create SubscriptionRequest with
-          broadcastKey
+          broadcast
           subscriber
       (newBcCid, _) <- submit broadcaster do
         exercise bcCid AddSubscriber with reqCid
