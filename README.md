@@ -69,3 +69,8 @@ A simple task-list app with composable sub-tasks, designed to check off onboardi
 A lean, but somewhat privacy-preserving process to issue airline tickets and allocate seats.
 
 [Project Readme](airline/README.md)
+
+### Broadcast
+A model showing how a broadcaster can broadcast information to subscribers via the ledger in a non-guaranteed, but efficient manner.
+
+[Project Readme](broadcast/README.md)

@@ -1,0 +1,158 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Broadcast where
+
+
+data Something = Something with
+  deriving (Eq, Show)
+
+data BroadcastKey = BroadcastKey with
+  broadcaster : Party
+  id : Text
+    deriving (Eq, Show)
+
+data SubscriptionKey = SubscriptionKey with
+  broadcast : BroadcastKey
+  subscriber : Party
+    deriving (Eq, Show)
+
+template BroadcastData
+  with
+    broadcastKey : BroadcastKey
+    payload : Something
+  where
+    signatory broadcastKey.broadcaster
+
+    key broadcastKey : BroadcastKey
+    maintainer broadcastKey.broadcaster
+
+template BroadcastSubscription
+  with
+    subscription : SubscriptionKey
+    currentDataCid : ContractId BroadcastData
+    currentData : BroadcastData
+  where
+    signatory subscription.broadcast.broadcaster, subscription.subscriber
+
+    key subscription : SubscriptionKey
+    maintainer subscription.broadcast.broadcaster
+
+    controller subscription.broadcast.broadcaster can
+      UpdateData : ContractId BroadcastSubscription
+        with
+          newDataCid : ContractId BroadcastData
+        do
+          -- This `fetch` ensures the new data lands in the subscriber's PCS
+          newData <- fetch newDataCid
+          create this with
+            currentDataCid = newDataCid
+            currentData = newData
+
+      nonconsuming Divulge : BroadcastData
+        with
+          newDataCid : ContractId BroadcastData
+        do fetch newDataCid
+
+template SubscriptionRequest
+  with
+    broadcastKey : BroadcastKey
+    subscriber : Party
+  where
+    signatory subscriber
+
+    controller broadcastKey.broadcaster can
+      AcceptSubscription : ContractId BroadcastSubscription
+        with
+          currentDataCid : ContractId BroadcastData
+        do
+          -- This `fetch` ensures the current data lands in the subscriber's PCS
+          currentData <- fetch currentDataCid
+          create BroadcastSubscription with
+            subscription = SubscriptionKey with
+              broadcast = broadcastKey
+              subscriber
+            currentDataCid
+            currentData
+
+template Broadcast
+  with
+    broadcastKey : BroadcastKey
+    subscribers : [Party]
+  where
+    signatory broadcastKey.broadcaster
+
+    key broadcastKey : BroadcastKey
+    maintainer broadcastKey.broadcaster
+
+    controller broadcastKey.broadcaster can
+      nonconsuming BroadcastUpdate : [ContractId BroadcastSubscription]
+        with
+          newPayload : Something
+        do
+          (oldDataCid, oldData) <- fetchByKey @BroadcastData (key this)
+          archive oldDataCid
+          let newData = oldData with payload = newPayload
+          newDataCid <- create newData
+
+          forA subscribers
+            (\subscriber -> do
+              (subCid, _) <- fetchByKey @BroadcastSubscription
+                SubscriptionKey with
+                  broadcast = key this
+                  subscriber
+              exercise subCid UpdateData with
+                newDataCid
+            )
+
+      AddSubscriber : (ContractId Broadcast, ContractId BroadcastSubscription)
+        with
+          reqCid : ContractId SubscriptionRequest
+        do
+          (currentDataCid, currentData) <- fetchByKey @BroadcastData (key this)
+          req <- fetch reqCid
+          bc <- create this with
+            subscribers = req.subscriber :: subscribers
+          bs <- exercise reqCid AcceptSubscription with currentDataCid
+          return (bc, bs)
+
+test_broadcast = scenario do
+  broadcaster <- getParty "Alice"
+  subscribers <- mapA getParty $ map (\i -> "subscriber" <> show i) [1..5]
+
+  let
+    broadcastKey = BroadcastKey with
+      broadcaster
+      id = "Broadcast"
+
+  dataCid <- submit broadcaster do
+    create BroadcastData with
+      broadcastKey
+      payload = Something with
+
+  bcCid <- submit broadcaster do
+    create Broadcast with
+      broadcastKey
+      subscribers = []
+
+  let
+    addSubscriber subscriber (bcCid : ContractId Broadcast) = do
+      reqCid <- submit subscriber do
+        create SubscriptionRequest with
+          broadcastKey
+          subscriber
+      (newBcCid, _) <- submit broadcaster do
+        exercise bcCid AddSubscriber with reqCid
+      return newBcCid
+    updateData (bcCid : ContractId Broadcast) = do
+      submit broadcaster do
+        exercise bcCid BroadcastUpdate with
+          newPayload = Something with
+    addAndUpdate (sBcCid : Scenario (ContractId Broadcast)) subscriber = do
+      bcCid <- sBcCid
+      newBcCid <- addSubscriber subscriber bcCid
+      updateData newBcCid
+      return newBcCid
+
+  foldl addAndUpdate (return bcCid) subscribers
