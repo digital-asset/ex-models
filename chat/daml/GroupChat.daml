@@ -1,0 +1,379 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
+daml 1.2
+
+-- DAML chat-room model, with support for multiple chat-groups with entry by invitation.
+
+module GroupChat where
+
+import DA.Action as A
+import DA.Date
+import DA.List
+import DA.Time
+
+-- `exerciseWhenKey` is like `exerciseByKey`, except that it uses `lookupByKey`
+-- instead of `fetchByKey`. On the one hand, that means it doesn't fail if the
+-- key doesn't exist, but returns a `None`, but it also means that it needs more
+-- authorization than an `exericise`, as `lookupByKey` needs authorization form
+-- all key maintainers.
+exerciseWhenKey : forall c k e r.(TemplateKey c k, Choice c e r) => k -> e -> Update (Optional r)
+exerciseWhenKey k e = do
+  ocid <- lookupByKey @c k
+  case ocid of
+    None -> return None
+    Some cid -> do
+      r <- exercise cid e
+      return (Some r)
+
+-- | GID is a contract key for a `ChatGroup`. GID = Group ID
+data GID = GID with
+  id : Text -- ^ A text identifier for the group
+  members : [Party] -- ^ The current members of the group
+    deriving (Eq, Show)
+
+-- | MID is a contract key for a `Message`. MID = Message ID
+data MID = MID with
+  gid : GID -- ^ Foreign key to the group
+  poster : Party -- ^ The (potentially former) group member that posted the message
+  id : Text -- ^ A text identifier of the message. E.g. sequence number or UUID
+    deriving (Eq, Show)
+
+-- | A template for a message.
+template Message
+  with
+    mid : MID -- ^ Identifier of the message
+    postedAt : Time -- ^ Ledger Effective Time the message was posted
+    text : Text -- ^ Message Body
+  where
+    signatory mid.gid.members
+
+    key mid : MID
+    maintainer key.gid.members
+
+    -- Updates to the group id need to be threaded through to enfore the
+    -- foreign key constraint.
+    choice M_ChangeGID
+      : ContractId Message
+      with
+        newGid : GID
+      controller mid.gid.members, newGid.members
+      do
+        create this with
+          mid = mid with
+            gid = newGid
+
+-- | `MessageIndex` keeps track of all messages posted by a single
+-- group member. This allows us to thread through GID changes, but doesn't
+-- make the posting of messages between different group members racy, as it
+-- would be if we kept one global index on `ChatGroup`.
+template MessageIndex
+  with
+    gid : GID
+    poster : Party
+    messageIds : [Text]
+  where
+    signatory gid.members
+
+    key (gid, poster) : (GID, Party)
+    maintainer key._1.members
+
+    -- Messages must be posted through this choice
+    -- in order to maintain the index.
+    controller gid.members, poster can
+      MI_Message
+        : ContractId Message
+        with
+          id : Text
+          text : Text
+        do
+          create this with
+            messageIds = id :: messageIds
+          now <- getTime
+          create Message with
+            mid = MID with
+              gid
+              poster
+              id
+            postedAt = now
+            text
+
+    -- Changes to the GID are passed on to messages through this choice.
+    choice MI_ChangeGID
+      : ContractId MessageIndex
+      with
+        newGid : GID
+      controller gid.members, newGid.members
+      do
+        A.forA messageIds (\id -> do
+          (mCid, m) <- fetchByKey @Message MID with ..
+          exercise mCid M_ChangeGID with newGid
+          )
+        create this with
+          gid = newGid
+
+    -- Method used to tidy up when a group is closed.
+    controller gid.members can
+      ArchiveIndex : ()
+        do
+          A.forA messageIds (\id -> do
+            (mCid, m) <- fetchByKey @Message MID with ..
+            archive mCid
+            )
+          return ()
+
+-- | Template for a chat group. A new group can be started by anyone by creating
+-- an instance of `ChatGroup`.
+template ChatGroup
+  with
+    gid : GID
+    pastMembers : [Party]
+  where
+    signatory gid.members
+
+    key gid : GID
+    maintainer key.members
+
+    -- An internal choice that allows the GID (ie group ID or members) to be changed
+    choice ChangeGID
+      : ContractId ChatGroup
+      with
+        newGid : GID
+      controller gid.members, newGid.members
+      do
+        A.forA (gid.members ++ pastMembers) (\poster -> do
+          exerciseWhenKey @MessageIndex (gid, poster) MI_ChangeGID with newGid
+          )
+        create this with
+            gid = newGid
+
+    -- Any existing member can add a new member
+    nonconsuming choice AddMember
+      : ContractId ChatGroup
+      with
+        member : Party
+        newMember : Party
+      controller member, newMember
+      do
+        assert (member `elem` gid.members)
+        let newGid = gid with members = dedupSort (newMember :: gid.members)
+        exercise self ChangeGID with newGid
+
+    -- Messages are posted though this choice, which makes sure indices are updated.
+    nonconsuming choice Post_Message
+      : ()
+      with
+        poster : Party
+        id : Text
+        text : Text
+      controller poster
+      do
+        assert (poster `elem` gid.members)
+        miCid <- exercise self GetOrCreateIndex with poster
+        exercise miCid MI_Message with ..
+        return ()
+
+    -- Members can leave at any time using this choice. Note that this will
+    -- fail for the last member. They have to call `ArchiveGroup` instead.
+    choice LeaveGroup
+      : ContractId ChatGroup
+      with
+        member : Party
+      controller member
+      do
+        assert (member `elem` gid.members)
+        let newGid = gid with members = filter (/= member) gid.members
+        newGroup <- create this with
+          pastMembers = dedupSort (member :: pastMembers)
+        exercise newGroup ChangeGID with newGid
+
+    controller gid.members can
+      -- The members can shut down a gruop, archiving the group as well
+      -- as assocuated indices and messages.
+      ArchiveGroup : ()
+        do
+          A.forA (gid.members ++ pastMembers) (\poster -> do
+            exerciseWhenKey @MessageIndex (gid, poster) ArchiveIndex
+            )
+          return ()
+
+      -- A conveniance choice to dynamically create `MessageIndex` contracts if not
+      -- Already present on ledger
+      nonconsuming GetOrCreateIndex
+        : ContractId MessageIndex
+        with
+          poster : Party
+        do
+          oid <- lookupByKey @MessageIndex (gid, poster)
+          case oid of
+            Some id -> return id
+            None -> create MessageIndex with messageIds = []; ..
+
+-- | Groups are joined by requesting access. Discovery is done off-ledger
+-- Ie one party has to tell another about the existence of a group.
+-- It would be easy to add an invitation contract, but note that the current
+-- member has to be the one interpreting the transaction adding a member.
+-- The new member does not know the `ChatGroup`, `MessageIndex` and `Message`
+-- contracts they need to update.
+template GroupMembershipRequest
+  with
+    groupId : Text
+    member : Party
+    newMember : Party
+  where
+    signatory newMember
+
+    controller member can
+      Onboard
+        : ContractId ChatGroup
+        with
+          groupCid : ContractId ChatGroup
+        do
+          group <- fetch groupCid
+          assert (group.gid.id == groupId)
+          exercise groupCid AddMember with
+            member
+            newMember
+
+setup_chat = scenario do
+  parties@[alice, bob, charlie] <- A.mapA getParty ["Alice", "Bob", "Charlie"]
+  passToDate (date 2019 Jul 01)
+
+  g <- submit alice do
+    create ChatGroup with
+      gid = GID with
+        id = "troll-bot"
+        members = [alice]
+      pastMembers = []
+
+  return (parties, g)
+
+first_post = scenario do
+  s@(parties@[alice, bob, charlie], g) <- setup_chat
+
+  submit alice do
+    exercise g Post_Message with
+      poster = alice
+      id = "1"
+      text = "first post"
+
+  return s
+
+onboard_bob = scenario do
+  s@(parties@[alice, bob, charlie], g) <- first_post
+  pass(days 1)
+
+  rb <- submit bob do
+    create GroupMembershipRequest
+      with
+        groupId = "troll-bot"
+        member = alice
+        newMember = bob
+
+  g <- submit alice do
+    exercise rb Onboard with groupCid = g
+
+  submit bob do
+    exercise g Post_Message with
+      poster = bob
+      id = "1"
+      text = "Hey Alice!"
+
+  return (parties, g)
+
+second_post = scenario do
+  s@(parties@[alice, bob, charlie], g) <- onboard_bob
+  pass(minutes 3)
+
+  submit alice do
+    exercise g Post_Message with
+      poster = alice
+      id = "2"
+      text = "Hey Bob, I'm good and you?"
+
+  return s
+
+onboard_charlie = scenario do
+  s@(parties@[alice, bob, charlie], g) <- second_post
+  pass (days 1)
+
+  rc <- submit charlie do
+    create GroupMembershipRequest
+      with
+        groupId = "troll-bot"
+        member = alice
+        newMember = charlie
+
+  g <- submit alice do
+    exercise rc Onboard with groupCid = g
+
+  return (parties, g)
+
+quit_bob = scenario do
+  s@(parties@[alice, bob, charlie], g) <- onboard_charlie
+  pass (seconds 10)
+
+  g <- submit bob do
+    exercise g Post_Message with
+      poster = bob
+      id = "2"
+      text = "Ugh, not that guy, why did you let him in?"
+    exercise g LeaveGroup with
+      member = bob
+
+  return (parties, g)
+
+rejoin_requit_bob = scenario do
+  s@(parties@[alice, bob, charlie], g) <- quit_bob
+  pass (seconds 10)
+
+  submit charlie do
+    exercise g Post_Message with
+      poster = charlie
+      id = "1"
+      text = "What's his problem?!"
+
+  rb <- submit bob do
+    create GroupMembershipRequest
+      with
+        groupId = "troll-bot"
+        member = alice
+        newMember = bob
+
+  pass (seconds 10)
+  g <- submit alice do
+    exercise rb Onboard with groupCid = g
+
+  g <- submit bob do
+    exercise g Post_Message with
+      poster = bob
+      id = "3"
+      text = "Alice, come on, let's start a new group without Charlie!"
+    exercise g LeaveGroup with
+      member = bob
+
+  return (parties, g)
+
+quit_alice = scenario do
+  s@(parties@[alice, bob, charlie], g) <- rejoin_requit_bob
+  pass (seconds 10)
+
+
+  g <- submit alice do
+    exercise g Post_Message with
+      poster = alice
+      id = "3"
+      text = "Without Bob, this group isn't worth running."
+    exercise g LeaveGroup with
+      member = alice
+
+  return (parties, g)
+
+archive_charlie = scenario do
+  s@(parties@[alice, bob, charlie], g) <- quit_alice
+  pass (seconds 10)
+
+  submit charlie do
+    exercise g ArchiveGroup
