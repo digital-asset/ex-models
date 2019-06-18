@@ -74,3 +74,8 @@ A lean, but somewhat privacy-preserving process to issue airline tickets and all
 A model showing how a broadcaster can broadcast information to subscribers via the ledger in a non-guaranteed, but efficient manner.
 
 [Project Readme](broadcast/README.md)
+
+### Group Chat
+A model demonstrating a distributed group chat application with dynamic, admin-less chat groups.
+
+[Project Readme](chat/README.md)
