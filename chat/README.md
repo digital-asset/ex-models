@@ -14,7 +14,7 @@ The message history per group grows indefinitely and changes in membership requi
 3. Members can post messages with the `Post_Message` choice and leave the group using the `LeaveGroup` choice as they please.
 
 ## Testing
-The model is tested in a searies of sequential scenarios terminating in `archive_charlie`. Note how `Post_Message` is a relatively small transaction, whereas `LeaveGroup` and `AddMember` get larger as the group grows.
+The model is tested in a series of sequential scenarios terminating in `archive_charlie`. Note how `Post_Message` is a relatively small transaction, whereas `LeaveGroup` and `AddMember` get larger as the group grows.
 
 
 ## Contributing

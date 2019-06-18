@@ -76,6 +76,6 @@ A model showing how a broadcaster can broadcast information to subscribers via t
 [Project Readme](broadcast/README.md)
 
 ### Group Chat
-A model demonstrating a distributed group chat applicationwith dynamic, admin-less chat groups.
+A model demonstrating a distributed group chat application with dynamic, admin-less chat groups.
 
 [Project Readme](chat/README.md)
