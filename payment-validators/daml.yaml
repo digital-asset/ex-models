@@ -1,0 +1,15 @@
+sdk-version: 0.13.12
+name: ripple
+source: daml/Main.daml
+scenario: Main:setup
+parties:
+  - Alice
+  - Bob
+  - Val_A
+  - Val_B
+  - Val_C
+  - Val_D
+version: 1.0.0
+dependencies:
+  - daml-prim
+  - daml-stdlib

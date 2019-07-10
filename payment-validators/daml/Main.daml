@@ -1,0 +1,155 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Main where
+
+import DA.Next.Set as S
+import DA.Assert
+
+template IssuanceRequest
+  with
+    owner : Party
+    validators : Set Party
+    validatorOverlapThreshold : Decimal
+    balance : Decimal
+    signed : Set Party
+  where
+    signatory owner, signed
+    observer owner, validators
+
+    choice Sign : ContractId IssuanceRequest
+      with signee : Party
+      controller signee
+      do
+        assert $ S.member signee validators
+        create this with signed = S.insert signee signed
+
+    choice Issue : ContractId Wallet
+      with issuer : Party
+      controller issuer
+      do
+        validators === signed
+        assert $ S.member issuer signed
+        create Wallet with ..
+
+template Wallet
+  with
+    owner : Party
+    validators : Set Party
+    validatorOverlapThreshold : Decimal
+    balance : Decimal
+  where
+    ensure balance >= 0.0
+    signatory owner, validators
+    controller owner can
+      RequestTransfer : (ContractId Wallet, ContractId TransferRequest)
+        with
+          newOwner : Party
+          transferValidators : Set Party
+          amount : Decimal
+        do
+          let overlap = S.intersection transferValidators validators
+          let overlapPerc = (intToDecimal $ S.size overlap) / (intToDecimal $ S.size validators)
+          assert $ overlapPerc >= validatorOverlapThreshold
+          wallet <- create this with balance = balance - amount
+          request <- create TransferRequest with
+            sender = owner
+            receiver = newOwner
+            validators = transferValidators
+            amount
+          return (wallet, request)
+
+      CancelTransfer : ContractId Wallet
+        with
+          transferRequestCid : ContractId TransferRequest
+        do
+          transferRequest <- fetch transferRequestCid
+          transferRequest.sender === owner
+          create this with balance = balance + transferRequest.amount
+
+      AcceptTransfer : ContractId Wallet
+        with
+          transferRequestCid : ContractId TransferRequest
+        do
+          transferRequest <- fetch transferRequestCid
+          transferRequest.receiver === owner
+          let overlap = S.intersection transferRequest.validators validators
+          let overlapPerc = (intToDecimal $ S.size overlap) / (intToDecimal $ S.size validators)
+          assert $ overlapPerc >= validatorOverlapThreshold
+          create this with balance = balance + transferRequest.amount
+
+template TransferRequest
+  with
+    sender : Party
+    receiver : Party
+    validators : Set Party
+    amount : Decimal
+  where
+    ensure amount > 0.0
+    signatory sender, validators
+    observer receiver
+
+demo = scenario do
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+  a <- getParty "Val_A"
+  b <- getParty "Val_B"
+  c <- getParty "Val_C"
+  d <- getParty "Val_D"
+
+  -- Issue a wallet to Alice
+  irA <- submit alice do
+    create IssuanceRequest with
+      owner = alice
+      validators = S.fromList [ a, b, c ]
+      validatorOverlapThreshold = 0.5
+      balance = 1000.0
+      signed = S.empty
+  irA <- submit a do exercise irA Sign with signee = a
+  irA <- submit b do exercise irA Sign with signee = b
+  irA <- submit c do exercise irA Sign with signee = c
+  walletA <- submit a do exercise irA Issue with issuer = a
+
+  -- Issue a wallet to Bob
+  irB <- submit bob do
+    create IssuanceRequest with
+      owner = bob
+      validators = S.fromList [ b, c, d ]
+      validatorOverlapThreshold = 0.5
+      balance = 1000.0
+      signed = S.empty
+  irB <- submit b do exercise irB Sign with signee = b
+  irB <- submit c do exercise irB Sign with signee = c
+  irB <- submit d do exercise irB Sign with signee = d
+  walletB <- submit b do exercise irB Issue with issuer = b
+
+  -- Alice requests a transfer to Bob
+  (walletA, tr) <- submit alice do
+    exercise walletA RequestTransfer with
+      newOwner = bob
+      transferValidators = S.fromList [ b, c ]
+      amount = 200.0
+  
+  -- Bob accepts the transfer
+  walletB <- submit bob do
+    exercise walletB AcceptTransfer with
+      transferRequestCid = tr
+
+  -- Alice requests another transfer to Bob
+  (walletA, tr) <- submit alice do
+    exercise walletA RequestTransfer with
+      newOwner = bob
+      transferValidators = S.fromList [ a, b ]
+      amount = 200.0
+  
+  -- Bob can't accept the transfer (overlap too small)
+  submitMustFail bob do
+    exercise walletB AcceptTransfer with
+      transferRequestCid = tr
+
+  -- Alice cancels the transfer
+  submit alice do
+    exercise walletA CancelTransfer with
+      transferRequestCid = tr
+
