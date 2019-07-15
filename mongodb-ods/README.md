@@ -3,18 +3,18 @@ Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All r
 SPDX-License-Identifier: Apache-2.0
 ```
 
-# MongoDB ODS & Analytics on the DA Ledger
+# MongoDB ODS & Analytics on a DAML Ledger
 
 ## Overview
 
 The aim of this demo is to investigate
 
-- The suitability of using MongoDB as on ODS, storing information from the DA Ledger event stream as documents in a database
+- The suitability of using MongoDB as on ODS, storing information from a DAML Ledger event stream as documents in a database
 - MongoDB's GUI and native aggregation pipeline tools, and how they can be used to drill down into the data
 
-An ODS is an intermediate database for storing state, and in the context of the DA Ledger is a good way to have a local representation of the Active Contract Store (ACS) for rendering views, calculating a net position, etc. rather than hitting the ledger each time.
+An ODS is an intermediate database for storing state, and in the context of a DAML Ledger is a good way to have a local representation of the Active Contract Store (ACS) for rendering views, calculating a net position, etc. rather than hitting the ledger each time.
 
-MongoDB is a document database with JSON document format; the DA Ledger document model as per the Python Application Frameworks is also JSON, so it makes sense to use MongoDB for the ODS, with the added benefit of powerful and sophisticated queries and aggregation in real-time.
+MongoDB is a document database with JSON document format; the DAML Ledger document model as per the Python Application Frameworks is also JSON, so it makes sense to use MongoDB for the ODS, with the added benefit of powerful and sophisticated queries and aggregation in real-time.
 
 ### The Data Set
 
@@ -28,12 +28,12 @@ There is also a single `Analyst` record, which is the operater user under whom r
 
 The key elements to the demo are listed below:
 
-1. The DA Ledger
+1. The DAML Ledger
 1. MongoDB running in a Docker container, serving as the ODS
 1. Event Subscriber service ("_listener nanobot_") to consume an event stream from the ledger and create documents in MongoDB
 1. Payload generation process ("_datagen_") - generates documents and pushes these onto a message queue for consumption
 1. A RabbitMQ Pub/Sub queue, running in a Docker container, to accept the documents from datagen, and also handle back-pressure during the data load
-1. Command Submitter workers to pop the documents from the MQ and submit commands to the DA Ledger, utilizing the Digital Asset Application Frameworks
+1. Command Submitter workers to pop the documents from the MQ and submit commands to the DAML Ledger, utilizing the Digital Asset Application Frameworks
 
 Diagramatically:
 
@@ -290,7 +290,7 @@ bye
 
 ## Extending the Demo
 
-One of the aims of this demo was to investigate the feasibility of using MongoDB's native aggregation tools - with or without further enrichment - to drive automatic decision-making which results in new commands being submitted to the DA Ledger. 
+One of the aims of this demo was to investigate the feasibility of using MongoDB's native aggregation tools - with or without further enrichment - to drive automatic decision-making which results in new commands being submitted to the DAML Ledger. 
 
 A potential architecture is below:
 
