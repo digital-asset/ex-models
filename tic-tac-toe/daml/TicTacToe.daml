@@ -23,7 +23,7 @@ hasWon game player =
     hasWonVertical = any hasAllVertical [0 .. game.size - 1]
     hasWonDiagonal = any hasAllDiagonal [0 .. game.size - 1]
     hasWonCounterDiagonal = any hasAllCounterDiagonal [0 .. game.size - 1]
-  in hasWonHorizontal || hasWonVertical || hasWonDiagonal
+  in hasWonHorizontal || hasWonVertical || hasWonDiagonal || hasWonCounterDiagonal
 
 data Move = Move
   with
