@@ -43,6 +43,17 @@ template Wallet
     ensure balance >= 0.0
     signatory owner, validators
     controller owner can
+      Split : (ContractId Wallet, ContractId Wallet)
+        with
+          validatorSubset : Set Party
+          amount : Decimal
+        do
+          assert $ amount <= balance
+          assert $ S.intersection validatorSubset validators == validatorSubset
+          newWallet <- create this with validators = validatorSubset; balance = amount
+          oldWallet <- create this with balance = balance - amount
+          pure (oldWallet, newWallet)
+
       RequestTransfer : (ContractId Wallet, ContractId TransferRequest)
         with
           newOwner : Party
@@ -58,7 +69,7 @@ template Wallet
             receiver = newOwner
             validators = transferValidators
             amount
-          return (wallet, request)
+          pure (wallet, request)
 
       CancelTransfer : ContractId Wallet
         with
@@ -66,6 +77,7 @@ template Wallet
         do
           transferRequest <- fetch transferRequestCid
           transferRequest.sender === owner
+          archive transferRequestCid
           create this with balance = balance + transferRequest.amount
 
       AcceptTransfer : ContractId Wallet
@@ -77,6 +89,7 @@ template Wallet
           let overlap = S.intersection transferRequest.validators validators
           let overlapPerc = (intToDecimal $ S.size overlap) / (intToDecimal $ S.size validators)
           assert $ overlapPerc >= validatorOverlapThreshold
+          exercise transferRequestCid Delete
           create this with balance = balance + transferRequest.amount
 
 template TransferRequest
@@ -90,13 +103,27 @@ template TransferRequest
     signatory sender, validators
     observer receiver
 
-demo = scenario do
+    controller receiver, validators can
+      Delete : ()
+        do pure ()
+
+data Fixture = Fixture with
+  alice : Party
+  bob : Party
+  a : Party
+  b : Party
+  c : Party
+  d : Party
+  walletAliceCid : ContractId Wallet
+  walletBobCid : ContractId Wallet
+
+fixture = scenario do
   alice <- getParty "Alice"
   bob <- getParty "Bob"
-  a <- getParty "Val_A"
-  b <- getParty "Val_B"
-  c <- getParty "Val_C"
-  d <- getParty "Val_D"
+  a <- getParty "US_Val_A"
+  b <- getParty "EU_Val_B"
+  c <- getParty "EU_Val_C"
+  d <- getParty "US_Val_D"
 
   -- Issue a wallet to Alice
   irA <- submit alice do
@@ -109,7 +136,7 @@ demo = scenario do
   irA <- submit a do exercise irA Sign with signee = a
   irA <- submit b do exercise irA Sign with signee = b
   irA <- submit c do exercise irA Sign with signee = c
-  walletA <- submit a do exercise irA Issue with issuer = a
+  walletAliceCid <- submit a do exercise irA Issue with issuer = a
 
   -- Issue a wallet to Bob
   irB <- submit bob do
@@ -122,34 +149,62 @@ demo = scenario do
   irB <- submit b do exercise irB Sign with signee = b
   irB <- submit c do exercise irB Sign with signee = c
   irB <- submit d do exercise irB Sign with signee = d
-  walletB <- submit b do exercise irB Issue with issuer = b
+  walletBobCid <- submit b do exercise irB Issue with issuer = b
+
+  pure Fixture with ..
+
+-- Counterparty and 3rd party validators don't see one's wallet
+test1 = scenario do
+  Fixture{..} <- fixture
 
   -- Alice requests a transfer to Bob
-  (walletA, tr) <- submit alice do
-    exercise walletA RequestTransfer with
+  (walletAliceCid, tr) <- submit alice do
+    exercise walletAliceCid RequestTransfer with
       newOwner = bob
       transferValidators = S.fromList [ b, c ]
       amount = 200.0
-  
-  -- Bob accepts the transfer
-  walletB <- submit bob do
-    exercise walletB AcceptTransfer with
-      transferRequestCid = tr
+  pure ()
+  -- -- Verify all of Alice's, but not Bob-only validators can see the transfer
+  submit a do fetch tr
+  -- submit b do fetch tr
+  -- submit c do fetch tr
+  -- submit d do fetch tr
 
+  -- -- Bob accepts the transfer
+  -- walletBobCid <- submit bob do
+  --   exercise walletBobCid AcceptTransfer with
+  --     transferRequestCid = tr
+
+  -- -- Verify transfer happened
+  -- walletAlice <- submit alice do fetch walletAliceCid
+  -- walletBob <- submit bob do fetch walletBobCid
+  -- walletAlice.balance === 800.0
+  -- walletBob.balance === 1200.0
+
+  -- -- Verify validator visibility
+  -- submitMustFail d do fetch walletAliceCid
+  -- submitMustFail a do fetch walletBobCid
+  -- submitMustFail bob do fetch walletAliceCid
+  -- submitMustFail alice do fetch walletBobCid
+
+-- Unsuccessful transfer due to insufficient validator overlap
+test2 = scenario do
+  Fixture{..} <- fixture
   -- Alice requests another transfer to Bob
-  (walletA, tr) <- submit alice do
-    exercise walletA RequestTransfer with
+  (walletAlice, tr) <- submit alice do
+    exercise walletAliceCid RequestTransfer with
       newOwner = bob
       transferValidators = S.fromList [ a, b ]
       amount = 200.0
   
   -- Bob can't accept the transfer (overlap too small)
   submitMustFail bob do
-    exercise walletB AcceptTransfer with
+    exercise walletBobCid AcceptTransfer with
       transferRequestCid = tr
 
   -- Alice cancels the transfer
   submit alice do
-    exercise walletA CancelTransfer with
+    exercise walletAlice CancelTransfer with
       transferRequestCid = tr
 
+-- 

@@ -9,4 +9,7 @@ lib/
 navigator.history
 .navigator.conf
 .daml/
+dist/
+.interfaces/
+.package-database
 
