@@ -1,4 +1,4 @@
-sdk-version: 0.13.12
+sdk-version: 0.13.13
 name: ripple
 source: daml/Main.daml
 scenario: Main:setup

@@ -110,20 +110,25 @@ template TransferRequest
 data Fixture = Fixture with
   alice : Party
   bob : Party
+  charlie : Party
   a : Party
   b : Party
   c : Party
   d : Party
+  e : Party
   walletAliceCid : ContractId Wallet
   walletBobCid : ContractId Wallet
+  walletCharlieCid : ContractId Wallet
 
 fixture = scenario do
   alice <- getParty "Alice"
   bob <- getParty "Bob"
-  a <- getParty "US_Val_A"
-  b <- getParty "EU_Val_B"
-  c <- getParty "EU_Val_C"
-  d <- getParty "US_Val_D"
+  charlie <- getParty "Charlie"
+  a <- getParty "Val_A"
+  b <- getParty "Val_B"
+  c <- getParty "Val_C"
+  d <- getParty "Val_D"
+  e <- getParty "Val_E"
 
   -- Issue a wallet to Alice
   irA <- submit alice do
@@ -151,6 +156,19 @@ fixture = scenario do
   irB <- submit d do exercise irB Sign with signee = d
   walletBobCid <- submit b do exercise irB Issue with issuer = b
 
+  -- Issue a wallet to Bob
+  irC <- submit charlie do
+    create IssuanceRequest with
+      owner = charlie
+      validators = S.fromList [ c, d, e ]
+      validatorOverlapThreshold = 0.5
+      balance = 1000.0
+      signed = S.empty
+  irC <- submit c do exercise irC Sign with signee = c
+  irC <- submit d do exercise irC Sign with signee = d
+  irC <- submit e do exercise irC Sign with signee = e
+  walletCharlieCid <- submit c do exercise irC Issue with issuer = c
+
   pure Fixture with ..
 
 -- Counterparty and 3rd party validators don't see one's wallet
@@ -163,29 +181,62 @@ test1 = scenario do
       newOwner = bob
       transferValidators = S.fromList [ b, c ]
       amount = 200.0
-  pure ()
-  -- -- Verify all of Alice's, but not Bob-only validators can see the transfer
-  submit a do fetch tr
-  -- submit b do fetch tr
-  -- submit c do fetch tr
-  -- submit d do fetch tr
 
-  -- -- Bob accepts the transfer
-  -- walletBobCid <- submit bob do
-  --   exercise walletBobCid AcceptTransfer with
-  --     transferRequestCid = tr
+  -- Verify the transfer is only disclosed to Alice's chosen validators
+  -- Note: Alice's other validators will be devulged the transfer, but they cannot fetch it
+  submitMustFail a do fetch tr
+  submit b do fetch tr
+  submit c do fetch tr
+  submitMustFail d do fetch tr
 
-  -- -- Verify transfer happened
-  -- walletAlice <- submit alice do fetch walletAliceCid
-  -- walletBob <- submit bob do fetch walletBobCid
-  -- walletAlice.balance === 800.0
-  -- walletBob.balance === 1200.0
+  -- Bob accepts the transfer
+  walletBobCid <- submit bob do
+    exercise walletBobCid AcceptTransfer with
+      transferRequestCid = tr
 
-  -- -- Verify validator visibility
-  -- submitMustFail d do fetch walletAliceCid
-  -- submitMustFail a do fetch walletBobCid
-  -- submitMustFail bob do fetch walletAliceCid
-  -- submitMustFail alice do fetch walletBobCid
+  -- Verify transfer happened
+  walletAlice <- submit alice do fetch walletAliceCid
+  walletBob <- submit bob do fetch walletBobCid
+  walletAlice.balance === 800.0
+  walletBob.balance === 1200.0
+
+  -- Verify validator visibility
+  submitMustFail d do fetch walletAliceCid
+  submitMustFail a do fetch walletBobCid
+  submitMustFail bob do fetch walletAliceCid
+  submitMustFail alice do fetch walletBobCid
+
+  -- Bob requests a transfer to Charlie
+  (walletBobCid, tr) <- submit bob do
+    exercise walletBobCid RequestTransfer with
+      newOwner = charlie
+      transferValidators = S.fromList [ c, d ]
+      amount = 200.0
+
+  -- Verify the transfer is only disclosed to Bob's chosen validators
+  -- Note: Bob's other validators will be devulged the transfer, but they cannot fetch it
+  submitMustFail a do fetch tr
+  submitMustFail b do fetch tr
+  submit c do fetch tr
+  submit d do fetch tr
+  submitMustFail e do fetch tr
+
+  -- Charlie's accepts the transfer
+  walletCharlieCid <- submit charlie do
+    exercise walletCharlieCid AcceptTransfer with
+      transferRequestCid = tr
+
+  -- Verify transfer happened
+  walletBob <- submit bob do fetch walletBobCid
+  walletCharlie <- submit charlie do fetch walletCharlieCid
+  walletBob.balance === 1000.0
+  walletCharlie.balance === 1200.0
+
+  -- Verify validator visibility
+  submitMustFail e do fetch walletBobCid
+  submitMustFail b do fetch walletCharlieCid
+  submitMustFail charlie do fetch walletBobCid
+  submitMustFail bob do fetch walletCharlieCid
 
 -- Unsuccessful transfer due to insufficient validator overlap
 test2 = scenario do
@@ -206,5 +257,3 @@ test2 = scenario do
   submit alice do
     exercise walletAlice CancelTransfer with
       transferRequestCid = tr
-
--- 
