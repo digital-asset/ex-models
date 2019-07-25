@@ -1,0 +1,15 @@
+sdk-version: 0.13.14
+name: task-tracking
+version: 1.0.0
+source: daml/TaskTracking.daml
+scenario: TaskTracking.validTaskWorkflow
+parties:
+- A
+- B
+- C
+- D
+exposed-modules:
+- TaskTracking
+dependencies:
+- daml-prim
+- daml-stdlib

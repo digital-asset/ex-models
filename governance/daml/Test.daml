@@ -19,9 +19,9 @@ fixture : Scenario Fixture
 fixture =
   do
     government <- getParty "Government"
-    x <- getParty "X"
-    y <- getParty "Y"
-    z <- getParty "Z"
+    x <- getParty "A"
+    y <- getParty "B"
+    z <- getParty "C"
     let citizens = S.fromList [ x, y, z ]
     let name = "TestBallot"
     pure Fixture with ..

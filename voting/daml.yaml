@@ -1,0 +1,16 @@
+sdk-version: 0.13.14
+name: voting
+version: 1.0.0
+source: daml/Voting.daml
+scenario: Voting.validVote
+parties:
+- Government
+- A
+- B
+- C
+- Proposer
+exposed-modules:
+- Voting
+dependencies:
+- daml-prim
+- daml-stdlib

@@ -5,7 +5,7 @@ daml 1.2
 module Rules.Main where
 
 import DA.Either
-import DA.Map as M
+import DA.Next.Map as M
 import DA.Optional
 
 import Types

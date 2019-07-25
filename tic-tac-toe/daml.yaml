@@ -1,0 +1,13 @@
+sdk-version: 0.13.14
+name: tic-tac-toe
+version: 1.0.0
+source: daml/Test.daml
+scenario: Test.allScenarios
+parties:
+- Player1
+- Player2
+exposed-modules:
+- TicTacToe
+dependencies:
+- daml-prim
+- daml-stdlib

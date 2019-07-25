@@ -4,6 +4,9 @@
 daml 1.2
 module Types where
 
+import DA.Next.Map
+import DA.Text as T
+
 data GameId = GameId with
   ref : Text
   white : Party
@@ -22,6 +25,12 @@ data Coord = Coord with
   col : Text
   row : Int
     deriving (Eq, Show, Ord)
+
+instance MapKey Coord where
+  keyToText c = c.col <> ";" <> keyToText c.row
+  keyFromText t = case T.splitOn ";" t of
+    [a, b] -> Coord with col = a; row = keyFromText b
+    _ -> error "malformatted key"
 
 data Piece = Piece with
   coord : Coord

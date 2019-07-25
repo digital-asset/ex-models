@@ -1,0 +1,17 @@
+sdk-version: 0.13.14
+name: airline
+version: 1.0.0
+source: daml/Airline.daml
+scenario: Airline:dajet
+parties:
+- DA
+- P1
+- P2
+- P3
+- P4
+- P5
+exposed-modules:
+- Airline
+dependencies:
+- daml-prim
+- daml-stdlib
