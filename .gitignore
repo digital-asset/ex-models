@@ -8,3 +8,4 @@ lib/
 *.log
 navigator.history
 .navigator.conf
+.daml/

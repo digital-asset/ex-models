@@ -1,0 +1,16 @@
+sdk-version: 0.13.14
+name: crowd-funding
+version: 1.0.0
+source: daml/Test.daml
+scenario: Test:validClaim
+parties:
+- Issuer
+- Originator
+- A
+- B
+- C
+exposed-modules:
+- CrowdFunding
+dependencies:
+- daml-prim
+- daml-stdlib

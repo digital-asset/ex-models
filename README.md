@@ -8,6 +8,9 @@ This repository contains examples for several use cases modeled in DAML. They sh
 
 - [DAML SDK](https://docs.daml.com/getting-started/installation.html)
 
+## Contributing
+We welcome suggestions for improvements via issues, or direct contributions via pull requests.
+
 ## Examples
 
 ### Airline Seat Allocation

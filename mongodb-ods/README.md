@@ -307,7 +307,3 @@ This has not been implemented and remains to be done by the user.
 - Random user generation: <https://randomuser.me/documentation>
 - Movie ratings data set: <https://grouplens.org/datasets/movielens/>
 - MongoDB Manual - Aggregation <https://docs.mongodb.com/manual/aggregation>
-
-## Contributing
-
-We welcome suggestions for improvements via issues, or direct contributions via pull requests.

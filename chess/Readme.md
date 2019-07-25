@@ -12,24 +12,20 @@ This example models a chess game between two players. It's similar in spirit to 
 ## Building
 To compile the project:
 ```
-da compile
+daml build
 ```
 
 ## Testing
-To test scenarios:
+To test all scenarios:
 ```
-da run damlc -- test daml/Tests/All.daml
+daml test --color
 ```
 
 ## Running
 To load the project into the sandbox and start navigator:
 ```
-da start
+daml start
 ```
 
 ## Known Issues / Weaknesses
-
  - No automatic check / checkmate detection
-
-## Contributing
-We welcome suggestions for improvements via issues, or direct contributions via pull requests.

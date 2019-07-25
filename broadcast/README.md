@@ -9,9 +9,22 @@ This example shows how a party `broadcaster` can send data to subscribers. DAML'
 2. Subscribers create `SubscriptionRequest` contracts to ask to be added to the `Broadcast`. The `broadcaster` accepts these via choice `AcceptSubscription`.
 3. The `broadcaster` updates the `Broadcast` via the `BroadcastUpdate` choice on `Broadcast`.
 
+## Building
+To compile the project:
+```
+daml build
+```
+
 ## Testing
 The model is tested in scenario `test_broadcast`. Note how as subscribers are added, the `BroadcastUpdate` transactions get larget, but the transaction to add a new subscriber is constant size.
+To run all scenarios:
+```
+daml test --color
+```
 
 
-## Contributing
-We welcome suggestions for improvements via issues, or direct contributions via pull requests.
+## Running
+To load the project into the sandbox and start navigator:
+```
+daml start
+```

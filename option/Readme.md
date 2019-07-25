@@ -18,6 +18,3 @@ To load the project into the sandbox and start navigator:
 ```
 da start
 ```
-
-## Contributing
-We welcome suggestions for improvements via issues, or direct contributions via pull requests.
