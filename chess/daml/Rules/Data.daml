@@ -6,13 +6,19 @@ module Rules.Data where
 
 import DA.Either
 import DA.List
-import DA.Map as M
+import DA.Next.Map as M
 import DA.Text as T
 
 import Types
 
 -- Some aliases for ease of use
 type IntCoord = (Int, Int)
+instance MapKey IntCoord where
+  keyToText (a, b) = keyToText a <> ";" <> keyToText b
+  keyFromText t = case splitOn ";" t of
+    [a, b] -> (keyFromText a, keyFromText b)
+    _ -> error "malformatted key"
+
 type StateMap = Map IntCoord Piece
 type E = Either Text
 type Capture = Optional IntCoord

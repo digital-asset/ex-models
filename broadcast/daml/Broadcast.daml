@@ -27,7 +27,7 @@ template BroadcastData
     signatory broadcast.broadcaster
 
     key broadcast : BroadcastKey
-    maintainer broadcast.broadcaster
+    maintainer key.broadcaster
 
 template BroadcastSubscription
   with
@@ -38,7 +38,7 @@ template BroadcastSubscription
     signatory subscription.broadcast.broadcaster, subscription.subscriber
 
     key subscription : SubscriptionKey
-    maintainer subscription.broadcast.broadcaster
+    maintainer key.broadcast.broadcaster
 
     controller subscription.broadcast.broadcaster can
       UpdateData : ContractId BroadcastSubscription
@@ -80,7 +80,7 @@ template Broadcast
     signatory broadcast.broadcaster
 
     key broadcast : BroadcastKey
-    maintainer broadcast.broadcaster
+    maintainer key.broadcaster
 
     controller broadcast.broadcaster can
       nonconsuming BroadcastUpdate : [ContractId BroadcastSubscription]
@@ -115,7 +115,7 @@ template Broadcast
 
 test_broadcast = scenario do
   broadcaster <- getParty "Alice"
-  subscribers <- mapA getParty $ map (\i -> "subscriber" <> show i) [1..5]
+  subscribers <- mapA getParty $ map (\i -> "Subscriber" <> show i) [1..5]
 
   let
     broadcast = BroadcastKey with

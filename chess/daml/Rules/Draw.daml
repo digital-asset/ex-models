@@ -6,7 +6,7 @@ module Rules.Draw where
 
 import DA.Foldable as F
 import DA.List as L
-import DA.Map as M
+import DA.Next.Map as M
 import DA.Optional
 
 import Types
@@ -22,7 +22,7 @@ data OrdGameState = OrdGameState with
 
 data DrawState = DrawState with
   idleMoves : Int
-  stateCounts : Map OrdGameState Int
+  stateCounts : [(OrdGameState, Int)]
   gameState : GameState
 
 -- | Checkdraw checks the 50 move rule and threefold repetition by
@@ -30,14 +30,14 @@ data DrawState = DrawState with
 checkDraw : [ChessMove] -> E Bool
 checkDraw moves = do
   fds <- efds
-  let maxRepeats = maximum $ map snd (M.toList fds.stateCounts)
+  let maxRepeats = maximum $ map snd fds.stateCounts
   return (maxRepeats >= 3 || fds.idleMoves >= 50)
   where
     is = initState ()
 
     ids = DrawState with
       idleMoves = 0
-      stateCounts = fromList [(toOrd is, 1)]
+      stateCounts = [(toOrd is, 1)]
       gameState = is
 
     efds = L.foldr
@@ -64,10 +64,11 @@ moveFn move eds = do
     stateCounts = increment (toOrd gameState) ds.stateCounts
   return $ DrawState with ..
 
-increment : (Ord a) => a -> Map a Int -> Map a Int
-increment k m = M.insert k nv m
-  where
-    mv = M.lookup k m
-    nv = case mv of
-      None -> 1
-      Some v -> v + 1
+increment : (Ord a) => a -> [(a, Int)] -> [(a, Int)]
+increment k list =
+  let
+    filtered = filter (\(a, _) -> a == k) list
+    elem = find (\(a, _) -> a == k) list
+  in case elem of
+      None -> (k, 1) :: filtered
+      Some (_, i) -> (k, i + 1) :: filtered

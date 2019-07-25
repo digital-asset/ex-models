@@ -1,9 +1,0 @@
-project:
-  sdk-version: 0.12.17
-  scenario: Init:initData
-  name: chess
-  source: daml/Init.daml
-  parties:
-  - Alice
-  - Bob
-version: 2

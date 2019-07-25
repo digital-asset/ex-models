@@ -13,9 +13,21 @@ The message history per group grows indefinitely and changes in membership requi
 2. New group members are onboarded by existing members. Discovery happens off-ledger. Ie `Alice` is assumed to have told `Bob` and `Charlie` about her group "troll-bot" in the included scenarios.
 3. Members can post messages with the `Post_Message` choice and leave the group using the `LeaveGroup` choice as they please.
 
+## Building
+To compile the project:
+```
+daml build
+```
+
 ## Testing
 The model is tested in a series of sequential scenarios terminating in `archive_charlie`. Note how `Post_Message` is a relatively small transaction, whereas `LeaveGroup` and `AddMember` get larger as the group grows.
+To test all scenarios:
+```
+daml test --color
+```
 
-
-## Contributing
-We welcome suggestions for improvements via issues, or direct contributions via pull requests.
+## Running
+To load the project into the sandbox and start navigator:
+```
+daml start
+```

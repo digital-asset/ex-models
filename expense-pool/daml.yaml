@@ -1,0 +1,15 @@
+sdk-version: 0.13.14
+name: expense-pool
+version: 1.0.0
+source: daml/ExpensePool.daml
+scenario: ExpensePool.validPoolSplit
+parties:
+- Organizer
+- A
+- B
+- C
+exposed-modules:
+- ExpensePool
+dependencies:
+- daml-prim
+- daml-stdlib

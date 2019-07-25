@@ -1,0 +1,13 @@
+sdk-version: 0.13.14
+name: option
+version: 1.0.0
+source: daml/Main.daml
+scenario: Main:main
+parties:
+- AcmeBank
+- WonkaCorp
+exposed-modules:
+- Main
+dependencies:
+- daml-prim
+- daml-stdlib

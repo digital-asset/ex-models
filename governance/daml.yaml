@@ -1,0 +1,15 @@
+sdk-version: 0.13.14
+name: governance
+version: 1.0.0
+source: daml/Test.daml
+scenario: Test.allScenarios
+parties:
+- Government
+- A
+- B
+- C
+exposed-modules:
+- Governance
+dependencies:
+- daml-prim
+- daml-stdlib

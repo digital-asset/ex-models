@@ -15,20 +15,17 @@ This example models a sequential task tracking tool with each step represented b
 ## Building
 To compile the project:
 ```
-da compile
+daml build
 ```
 
 ## Testing
 To test all scenarios:
 ```
-da run damlc -- test daml/TaskTracking.daml
+daml test --color
 ```
 
 ## Running
 To load the project into the sandbox and start navigator:
 ```
-da start
+daml start
 ```
-
-## Contributing
-We welcome suggestions for improvements via issues, or direct contributions via pull requests.

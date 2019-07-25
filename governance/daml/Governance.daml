@@ -101,7 +101,7 @@ template Ballot
     observer voters
 
     key (government, name) : BallotKey
-    maintainer government
+    maintainer key._1
 
     choice Add : ()
       with voter : Party

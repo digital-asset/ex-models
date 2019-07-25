@@ -3,7 +3,7 @@ module Onboard where
 
 template Task
   with
-    key : Text
+    id : Text
     description : Text
     assigner : Party
     assignee : Party
@@ -12,8 +12,8 @@ template Task
     signatory assigner
     observer assignee, checker
 
-    key (key, assigner, assignee) : (Text, Party, Party)
-    maintainer assigner
+    key (id, assigner, assignee) : (Text, Party, Party)
+    maintainer key._2
 
     choice SignOff : ()
       controller checker
@@ -25,7 +25,7 @@ onboarding = scenario do
 
   taskCid <- submit hr do
     create Task with
-      key = "onboard"
+      id = "onboard"
       description = "Complete the onboarding process"
       assigner = hr
       assignee = alice
@@ -37,14 +37,14 @@ onboarding = scenario do
     departmentToSubTask d = do
       dep <- getParty d
       return $ Task with
-          key = d <> "_onboard"
+          id = d <> "_onboard"
           description = "Complete " <> d <> " onboarding"
           assigner = supervisor
           assignee = alice
           checker = dep
   [it, eng, ops, com] <- mapA getParty departmentNames
   subtasks <- mapA departmentToSubTask departmentNames
-  let subtaskKeys = map (\st -> st.key) subtasks
+  let subtaskKeys = map (\st -> st.id) subtasks
 
   [itOb, engOb, opsOb, comOb] <- submit supervisor do
     mapA (\st -> create st) subtasks
