@@ -1,0 +1,69 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Lottery where
+
+import Iou
+
+template Draw
+  with
+    organizer : Party
+    name : Text
+    description : Text
+    players : [Party]
+    ious : [ContractId Iou]
+    raised : Decimal
+    deadline : Time
+    threshold : Decimal
+  where
+    signatory organizer
+    signatory players
+
+    controller organizer can
+      Invite : ContractId PlayerInvite
+        with player : Party
+        do
+          create PlayerInvite with project = this; player
+      Claim : [ContractId Iou]
+        do
+          now <- getTime
+          assertMsg "Can only claim after deadline" $ now >= deadline
+          assertMsg "Can only claim if raised more than threshold" $ raised >= threshold
+          unlockedIous <- mapA (\i -> exercise i Unlock) ious
+          mapA (\i -> exercise i Transfer with newOwner = organizer) unlockedIous
+
+    choice Play : ContractId Draw
+      with
+        player : Party
+        iouId : ContractId Iou
+      controller player
+      do
+        now <- getTime
+        assertMsg "Plays can only happen before the deadline" $ now < deadline
+        assert $ elem player players
+        iou <- fetch iouId
+        assert $ iou.amount > 0.0
+        lockedIou <- exercise iouId Lock with newLocker = organizer
+        create this with ious = lockedIou :: ious; raised = raised + iou.amount
+
+    choice Reclaim : [ContractId Iou]
+      with player : Party
+      controller player
+      do
+        now <- getTime
+        assert $ elem player players
+        assertMsg "Can only reclaim after deadline" $ now >= deadline
+        assertMsg "Can only reclaim if raised less than threshold" $ raised < threshold
+        mapA (\i -> exercise i Unlock) ious
+
+template PlayerInvite
+  with
+    project : Draw
+    player : Party
+  where
+    signatory project.organizer, project.players
+    controller player can
+      Accept : ContractId Draw
+        do
+          create project with players = player :: project.players
