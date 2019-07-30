@@ -40,8 +40,10 @@ template Draw
         assertMsg "Lottery can only be played before the deadline." $ now < deadline
         assert $ elem player players
         iou <- fetch iouId
-        assertMsg "Paid amount must exactly match the ticket price." $  iou.amount == ticketPrice
+        assertMsg "Paid amount must exactly match the ticket price." $ iou.amount == ticketPrice
         exercise iouId Transfer with newOwner = organizer
+        ticket <- fetch ticketId
+        assertMsg "Ticket must not be empty." $ ticket.value /= ""
         exercise ticketId Transfer2 with newOwner = player
         create this with cashPrize = cashPrize + iou.amount
 
