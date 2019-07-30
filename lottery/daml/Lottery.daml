@@ -42,6 +42,7 @@ template Draw
         iou <- fetch iouId
         assertMsg "Paid amount must exactly match the ticket price." $  iou.amount == ticketPrice
         exercise iouId Transfer with newOwner = organizer
+        exercise ticketId Transfer2 with newOwner = player
         create this with cashPrize = cashPrize + iou.amount
 
 template PlayerInvite

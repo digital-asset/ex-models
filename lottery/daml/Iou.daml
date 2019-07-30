@@ -28,7 +28,7 @@ template Ticket
     signatory organizer
 
     controller owner can
-      Give : ContractId Ticket
+      Transfer2 : ContractId Ticket
         with newOwner : Party
         do
           create this with owner = newOwner          
