@@ -17,45 +17,40 @@ data Fixture = Fixture with
   iouIdA : ContractId Iou
   iouIdB : ContractId Iou
   iouIdC : ContractId Iou
-  drawId : ContractId Draw
+  playId : ContractId Draw
 
-setupFixture : Decimal -> Decimal -> Decimal -> Decimal -> Scenario Fixture
-setupFixture amountA amountB amountC threshold =
+setupFixture : Decimal -> Decimal -> Decimal -> Scenario Fixture
+setupFixture amountA amountB amountC =
   do
     i <- getParty "Issuer"
     o <- getParty "Organizer"
-    a <- getParty "A"
-    b <- getParty "B"
-    c <- getParty "C"
-    iouIdA <- submit i do create Iou with issuer = i; owner = a; locker = a; amount = amountA; currency = "USD"
-    iouIdB <- submit i do create Iou with issuer = i; owner = b; locker = b; amount = amountB; currency = "USD"
-    iouIdC <- submit i do create Iou with issuer = i; owner = c; locker = c; amount = amountC; currency = "USD"
-    drawId <- submit o do
+    a <- getParty "PlayerA"
+    b <- getParty "PlayerB"
+    c <- getParty "PlayerC"
+    iouIdA <- submit i do create Iou with issuer = i; owner = a; amount = amountA; currency = "USD"
+    iouIdB <- submit i do create Iou with issuer = i; owner = b; amount = amountB; currency = "USD"
+    iouIdC <- submit i do create Iou with issuer = i; owner = c; amount = amountC; currency = "USD"
+    playId <- submit o do
       create Draw with
         organizer = o
-        name = "MyProject"
-        description = "A test project"
+        name = "MyLottery"
+        description = "A test draw"
         players = []
-        ious = []
         cashPrize = 0.0
         deadline = time (date 1970 Jan 2) 0 0 0
-    inviteId <- submit o do exercise drawId Invite with player = a
-    drawId <- submit a do exercise inviteId Accept
-    inviteId <- submit o do exercise drawId Invite with player = b
-    drawId <- submit b do exercise inviteId Accept
-    inviteId <- submit o do exercise drawId Invite with player = c
-    drawId <- submit c do exercise inviteId Accept
-    drawId <- submit a do exercise drawId BuyTicket with player = a; iouId = iouIdA
-    drawId <- submit b do exercise drawId BuyTicket with player = b; iouId = iouIdB
-    drawId <- submit c do exercise drawId BuyTicket with player = c; iouId = iouIdC
+        ticketPrice = 3.50
+    inviteId <- submit o do exercise playId Invite with player = a
+    playId <- submit a do exercise inviteId Accept
+    inviteId <- submit o do exercise playId Invite with player = b
+    playId <- submit b do exercise inviteId Accept
+    inviteId <- submit o do exercise playId Invite with player = c
+    playId <- submit c do exercise inviteId Accept
+    playId <- submit a do exercise playId Play with player = a; iouId = iouIdA
+    playId <- submit b do exercise playId Play with player = b; iouId = iouIdB
+    playId <- submit c do exercise playId Play with player = c; iouId = iouIdC
     pure Fixture with ..
 
 validRun = scenario do
-  Fixture{..} <- setupFixture 50.0 25.0 25.0 100.0
+  Fixture{..} <- setupFixture 3.5 3.5 3.5
   passToDate $ date 1970 Jan 2
-  submit o do exercise drawId Run
-  
-invalidRun = scenario do
-  Fixture{..} <- setupFixture 49.0 25.0 25.0 100.0
-  passToDate $ date 1970 Jan 2
-  submitMustFail o do exercise drawId Run
+  submit o do exercise playId Run

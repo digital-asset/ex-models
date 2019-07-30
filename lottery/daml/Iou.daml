@@ -8,7 +8,6 @@ template Iou
   with
     issuer : Party
     owner : Party
-    locker : Party
     amount : Decimal
     currency : Text
   where
@@ -18,16 +17,4 @@ template Iou
       Transfer : ContractId Iou
         with newOwner : Party
         do
-          assert $ owner == locker
-          create this with owner = newOwner; locker = newOwner
-      Lock : ContractId Iou
-        with newLocker : Party
-        do
-          assert $ owner == locker
-          create this with locker = newLocker
-
-    controller locker can
-      Unlock : ContractId Iou
-        do
-          assert $ owner /= locker
-          create this with locker = owner
+          create this with owner = newOwner

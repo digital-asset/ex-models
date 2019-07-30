@@ -12,38 +12,36 @@ template Draw
     name : Text
     description : Text
     players : [Party]
-    ious : [ContractId Iou]
-    cashPrize : Decimal
+    cashPrize : Decimal    
     deadline : Time
+    ticketPrice : Decimal
   where
     signatory organizer
-    observer players
+    signatory players
 
     controller organizer can
       Invite : ContractId PlayerInvite
         with player : Party
         do
           create PlayerInvite with draw = this; player
-      Run : [ContractId Iou]
+      Run : ()
         do
           now <- getTime
           assertMsg "Can only run the lottery after deadline" $ now >= deadline
-          unlockedIous <- mapA (\i -> exercise i Unlock) ious
-          mapA (\i -> exercise i Transfer with newOwner = organizer) unlockedIous
 
-    choice BuyTicket : ContractId Draw
+    choice Play : ContractId Draw
       with
         player : Party
         iouId : ContractId Iou
       controller player
       do
         now <- getTime
-        assertMsg "Tickets can only be bought before the deadline" $ now < deadline
+        assertMsg "Lottery can only be played before the deadline" $ now < deadline
         assert $ elem player players
         iou <- fetch iouId
-        assert $ iou.amount > 0.0
-        lockedIou <- exercise iouId Lock with newLocker = organizer
-        create this with ious = lockedIou :: ious; cashPrize = cashPrize + iou.amount
+        assertMsg "Amount must match the ticket price exactly" $  iou.amount == ticketPrice
+        exercise iouId Transfer with newOwner = organizer
+        create this with cashPrize = cashPrize + iou.amount
 
 template PlayerInvite
   with
