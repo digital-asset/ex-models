@@ -2,7 +2,7 @@ sdk-version: 0.13.14
 name: lottery
 version: 1.0.0
 source: daml/Test.daml
-scenario: Test:validClaim
+scenario: Test:validRun
 parties:
 - Issuer
 - Organizer

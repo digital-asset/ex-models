@@ -13,9 +13,8 @@ template Draw
     description : Text
     players : [Party]
     ious : [ContractId Iou]
-    raised : Decimal
+    cashPrize : Decimal
     deadline : Time
-    threshold : Decimal
   where
     signatory organizer
     observer players
@@ -25,36 +24,26 @@ template Draw
         with player : Party
         do
           create PlayerInvite with draw = this; player
-      Claim : [ContractId Iou]
+      Run : [ContractId Iou]
         do
           now <- getTime
-          assertMsg "Can only claim after deadline" $ now >= deadline
+          assertMsg "Can only run the lottery after deadline" $ now >= deadline
           unlockedIous <- mapA (\i -> exercise i Unlock) ious
           mapA (\i -> exercise i Transfer with newOwner = organizer) unlockedIous
 
-    choice Play : ContractId Draw
+    choice BuyTicket : ContractId Draw
       with
         player : Party
         iouId : ContractId Iou
       controller player
       do
         now <- getTime
-        assertMsg "Plays can only happen before the deadline" $ now < deadline
+        assertMsg "Tickets can only be bought before the deadline" $ now < deadline
         assert $ elem player players
         iou <- fetch iouId
         assert $ iou.amount > 0.0
         lockedIou <- exercise iouId Lock with newLocker = organizer
-        create this with ious = lockedIou :: ious; raised = raised + iou.amount
-
-    choice Reclaim : [ContractId Iou]
-      with player : Party
-      controller player
-      do
-        now <- getTime
-        assert $ elem player players
-        assertMsg "Can only reclaim after deadline" $ now >= deadline
-        assertMsg "Can only reclaim if raised less than threshold" $ raised < threshold
-        mapA (\i -> exercise i Unlock) ious
+        create this with ious = lockedIou :: ious; cashPrize = cashPrize + iou.amount
 
 template PlayerInvite
   with
