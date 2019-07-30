@@ -30,6 +30,9 @@ setupFixture amountA amountB amountC =
     iouIdA <- submit i do create Iou with issuer = i; owner = a; amount = amountA; currency = "USD"
     iouIdB <- submit i do create Iou with issuer = i; owner = b; amount = amountB; currency = "USD"
     iouIdC <- submit i do create Iou with issuer = i; owner = c; amount = amountC; currency = "USD"
+    ticketIdA <- submit o do create Ticket with organizer = o; owner = o; value = "1-2-3-4-5/1-2"
+    ticketIdB <- submit o do create Ticket with organizer = o; owner = o; value = "2-3-4-5-6/2-3"
+    ticketIdC <- submit o do create Ticket with organizer = o; owner = o; value = "3-4-5-6-7/3-4"
     playId <- submit o do
       create Draw with
         organizer = o
@@ -45,9 +48,9 @@ setupFixture amountA amountB amountC =
     playId <- submit b do exercise inviteId Accept
     inviteId <- submit o do exercise playId Invite with player = c
     playId <- submit c do exercise inviteId Accept
-    playId <- submit a do exercise playId Play with player = a; iouId = iouIdA
-    playId <- submit b do exercise playId Play with player = b; iouId = iouIdB
-    playId <- submit c do exercise playId Play with player = c; iouId = iouIdC
+    playId <- submit a do exercise playId Play with player = a; iouId = iouIdA; ticketId = ticketIdA
+    playId <- submit b do exercise playId Play with player = b; iouId = iouIdB; ticketId = ticketIdB
+    playId <- submit c do exercise playId Play with player = c; iouId = iouIdC; ticketId = ticketIdC
     pure Fixture with ..
 
 validRun = scenario do

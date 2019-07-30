@@ -27,19 +27,20 @@ template Draw
       Run : ()
         do
           now <- getTime
-          assertMsg "Can only run the lottery after deadline" $ now >= deadline
+          assertMsg "Lottery can only be run after deadline." $ now >= deadline
 
     choice Play : ContractId Draw
       with
         player : Party
         iouId : ContractId Iou
+        ticketId : ContractId Ticket
       controller player
       do
         now <- getTime
-        assertMsg "Lottery can only be played before the deadline" $ now < deadline
+        assertMsg "Lottery can only be played before the deadline." $ now < deadline
         assert $ elem player players
         iou <- fetch iouId
-        assertMsg "Amount must match the ticket price exactly" $  iou.amount == ticketPrice
+        assertMsg "Paid amount must exactly match the ticket price." $  iou.amount == ticketPrice
         exercise iouId Transfer with newOwner = organizer
         create this with cashPrize = cashPrize + iou.amount
 

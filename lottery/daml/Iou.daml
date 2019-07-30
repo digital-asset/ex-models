@@ -18,3 +18,17 @@ template Iou
         with newOwner : Party
         do
           create this with owner = newOwner
+
+template Ticket
+  with
+    organizer : Party
+    owner : Party
+    value : Text
+  where
+    signatory organizer
+
+    controller owner can
+      Give : ContractId Ticket
+        with newOwner : Party
+        do
+          create this with owner = newOwner          
