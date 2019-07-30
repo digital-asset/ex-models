@@ -18,18 +18,17 @@ template Draw
     threshold : Decimal
   where
     signatory organizer
-    signatory players
+    observer players
 
     controller organizer can
       Invite : ContractId PlayerInvite
         with player : Party
         do
-          create PlayerInvite with project = this; player
+          create PlayerInvite with draw = this; player
       Claim : [ContractId Iou]
         do
           now <- getTime
           assertMsg "Can only claim after deadline" $ now >= deadline
-          assertMsg "Can only claim if raised more than threshold" $ raised >= threshold
           unlockedIous <- mapA (\i -> exercise i Unlock) ious
           mapA (\i -> exercise i Transfer with newOwner = organizer) unlockedIous
 
@@ -59,11 +58,11 @@ template Draw
 
 template PlayerInvite
   with
-    project : Draw
+    draw : Draw
     player : Party
   where
-    signatory project.organizer, project.players
+    signatory draw.organizer, draw.players
     controller player can
       Accept : ContractId Draw
         do
-          create project with players = player :: project.players
+          create draw with players = player :: draw.players
