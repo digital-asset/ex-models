@@ -13,6 +13,7 @@ template Draw
     description : Text
     players : [Party]
     cashPrize : Decimal
+    cashCarryOver : Decimal
     deadline : Time
     ticketPrice : Decimal
   where
@@ -27,7 +28,7 @@ template Draw
       Run : ()
         do
           now <- getTime
-          assertMsg "Lottery can only be run after deadline." $ now >= deadline
+          assertMsg "A lottery draw may only happen after the deadline." $ now >= deadline
 
     choice Play : ContractId Draw
       with
@@ -45,7 +46,7 @@ template Draw
         ticket <- fetch ticketId
         assertMsg "Ticket must not be empty." $ ticket.value /= ""
         exercise ticketId Transfer2 with newOwner = player
-        create this with cashPrize = cashPrize + iou.amount
+        create this with cashCarryOver = cashCarryOver + iou.amount
 
 template PlayerInvite
   with

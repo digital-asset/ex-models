@@ -47,6 +47,7 @@ setupFixture amountP amountA amountB amountC =
         description = "A test draw"
         players = []
         cashPrize = amountP
+        cashCarryOver = 0.0
         deadline = time (date 1970 Jan 2) 0 0 0
         ticketPrice = 3.50
     inviteId <- submit o do exercise drawId Invite with player = a
