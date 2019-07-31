@@ -33,13 +33,15 @@ setupFixture amountA amountB amountC =
     iouIdA <- submit i do create Iou with issuer = i; owner = a; amount = amountA; currency = "USD"
     iouIdB <- submit i do create Iou with issuer = i; owner = b; amount = amountB; currency = "USD"
     iouIdC <- submit i do create Iou with issuer = i; owner = c; amount = amountC; currency = "USD"
-    ticketIdA <- submit o do create Ticket with organizer = o; owner = o; value = "1-2-3-4-5/1-2"
-    ticketIdB <- submit o do create Ticket with organizer = o; owner = o; value = "2-3-4-5-6/2-3"
-    ticketIdC <- submit o do create Ticket with organizer = o; owner = o; value = "3-4-5-6-7/3-4"
+
+    ticketIdA <- submit o do create Ticket with organizer = o; owner = a; value = "1-2-3-4-5/1-2"
+    ticketIdB <- submit o do create Ticket with organizer = o; owner = b; value = "2-3-4-5-6/2-3"
+    ticketIdC <- submit o do create Ticket with organizer = o; owner = c; value = "3-4-5-6-7/3-4"
+
     drawId <- submit o do
       create Draw with
         organizer = o
-        name = "MyLottery"
+        name = "Euromillions"
         description = "A test draw"
         players = []
         cashPrize = 0.0
@@ -51,6 +53,7 @@ setupFixture amountA amountB amountC =
     drawId <- submit b do exercise inviteId Accept
     inviteId <- submit o do exercise drawId Invite with player = c
     drawId <- submit c do exercise inviteId Accept
+
     drawId <- submit a do exercise drawId Play with player = a; iouId = iouIdA; ticketId = ticketIdA
     drawId <- submit b do exercise drawId Play with player = b; iouId = iouIdB; ticketId = ticketIdB
     drawId <- submit c do exercise drawId Play with player = c; iouId = iouIdC; ticketId = ticketIdC
