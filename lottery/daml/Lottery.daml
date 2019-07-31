@@ -12,7 +12,7 @@ template Draw
     name : Text
     description : Text
     players : [Party]
-    cashPrize : Decimal    
+    cashPrize : Decimal
     deadline : Time
     ticketPrice : Decimal
   where
