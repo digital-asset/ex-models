@@ -1,0 +1,14 @@
+sdk-version: 0.13.18
+name: auction
+source: daml/Main.daml
+scenario: Main:setup
+parties:
+  - Seller
+  - Alice
+  - Bob
+version: 1.0.0
+exposed-modules:
+  - Main
+dependencies:
+  - daml-prim
+  - daml-stdlib

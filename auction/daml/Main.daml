@@ -1,0 +1,36 @@
+daml 1.2
+
+module Main where
+
+import Auction
+import DA.Time
+
+-- Note that, in a real implementation, `CompleteAuction` would 
+-- be triggered externally by a process at `Auction.end` time.
+setup = scenario do
+  seller <- getParty "Seller"
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+  now <- getTime
+  ipoId <- submit seller do
+    create Auction with 
+      security = "DA Ltd"
+      quantity = 1_000_000
+      seller = seller
+      start = now
+      end = addRelTime now (minutes 3)
+  aliceInviteId <- submit seller do
+    exercise ipoId InviteBidder with buyer = alice
+  bobInviteId <- submit seller do
+    exercise ipoId InviteBidder with buyer = bob
+  aliceBidId <- submit alice do
+    exercise aliceInviteId SubmitBid
+      with price = 99.0 ; quantity = 600_000
+  bobBidId <- submit bob do
+    exercise bobInviteId SubmitBid
+      with price = 97.0 ; quantity = 800_000
+  submit seller do
+    exercise ipoId CompleteAuction with bidIds = [aliceBidId, bobBidId]
+
+    
+    
