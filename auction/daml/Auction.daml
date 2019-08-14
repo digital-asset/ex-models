@@ -1,0 +1,81 @@
+daml 1.2
+
+module Auction where
+
+import DA.List
+
+-- Used both to indicate a bid, and to show the final allocations.
+data Allocation = Allocation with 
+  party: Party
+  price: Decimal
+  quantity: Int
+    deriving (Show, Eq)
+
+-- Given the remaining quantity and requested allocation amount,
+-- calculate the resulting quantity and allocation.
+allocBids: Int -> Allocation -> (Int, Allocation)
+allocBids 0 a = (0, a with quantity = 0)
+allocBids remQty a = if remQty >= a.quantity then (remQty - a.quantity, a)
+                     else (0, a with quantity = remQty)
+
+-- Auction template visible only to the seller.
+template Auction
+  with
+    security: Text
+    quantity: Int
+    seller: Party
+    start: Time
+    end: Time
+  where
+    ensure quantity > 0 && start < end
+    signatory seller
+    -- Sent individually to each participant (bidder) at start of auction.
+    nonconsuming choice InviteBidder: ContractId AuctionInvitation 
+        with buyer: Party
+        controller seller
+          do create AuctionInvitation with buyer; auction = this
+    -- This should be triggered externally at the auction end time.
+    -- Collect the bids and publish allocations in `AuctionResult`.
+    choice CompleteAuction: ContractId AuctionResult
+        with bidIds: [ContractId Bid]
+        controller seller
+        do 
+          bids <- mapA (\id -> fetch id) bidIds
+          let requestedAllocs = map (\x -> x.allocation) bids
+              sortedAllocs = (sortOn (\x -> Down x.price) ) requestedAllocs
+              finalAllocs = mapAccumL allocBids this.quantity sortedAllocs -- TODO: filter qty = 0 allocs?
+          create AuctionResult with auction = this; allocations = finalAllocs._2
+
+-- Private to each buyer; contains a copy of the main Auction contract.
+template AuctionInvitation
+  with
+    auction: Auction
+    buyer: Party
+  where
+    signatory auction.seller
+    controller buyer can 
+      SubmitBid: ContractId Bid
+        with price: Decimal, quantity: Int
+        do
+          now <- getTime
+          assert(now <= auction.end &&
+                 now >= auction.start)
+          create Bid with auction; allocation = Allocation with party = buyer; price; quantity
+
+-- Used to place a bid on an active auction.
+template Bid
+  with
+    auction: Auction
+    allocation: Allocation
+  where
+    signatory allocation.party
+    observer auction.seller
+
+-- Created on successful completion of an auction, to display allocs.
+template AuctionResult
+  with
+    auction: Auction
+    allocations: [ Allocation ]
+  where
+    signatory auction.seller
+    observer map (\x -> x.party) allocations
