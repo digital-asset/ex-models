@@ -1,7 +1,7 @@
 # Dutch Auction
 
 ## Overview
-This project demonstrates how embedding DAML contracts can be used to prevent information leakage during multip-party transactions. The alternative is to use the [multi-party agreement protocol](https://docs.daml.com/daml/patterns/multiparty-agreement.html); however this reveals the identity of parties involved.
+This project demonstrates how embedding DAML contracts can be used to prevent information leakage during multi-party transactions. The alternative is to use the [multi-party agreement protocol](https://docs.daml.com/daml/patterns/multiparty-agreement.html); however this reveals the identity of parties involved.
 This example is a simplified version of auctions [used for IPOs](https://en.wikipedia.org/wiki/Dutch_auction#Public_offerings). You can see a more elaborate example in [bond issuance](https://github.com/digital-asset/ex-bond-issuance).
 
 ## Workflow
@@ -18,4 +18,6 @@ daml test
 ```
 
 ## Running
-todo - create an external process that monitors `Auctions` and triggers `CompleteAuction` at the appropriate time.
+```
+daml start
+```
