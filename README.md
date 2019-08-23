@@ -48,6 +48,11 @@ A shared expense pool where expenses are added in form of Ious, which then get s
 
 [Project Readme](expense-pool/README.md)
 
+### Issuer Token
+Example of token issuance by a central controlling party.
+
+[Project Readme](issuertoken/README.md)
+
 ### Governance
 A model demonstrating how on-chain governance can be modeled in DAML. Citizens can vote for the creation of a consititution contract, for the update of the constitution text, or for the upgrade of the constitution contract to a newer version.
 
