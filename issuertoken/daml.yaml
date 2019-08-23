@@ -1,0 +1,12 @@
+sdk-version: 0.13.18
+name: ex-issuertoken
+source: daml/Main.daml
+scenario: Scenarios:setup
+parties:
+  - Issuer
+  - Sally
+  - Rebecca
+version: 0.0.1
+dependencies:
+  - daml-prim
+  - daml-stdlib
