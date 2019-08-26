@@ -1,0 +1,81 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+--
+-- This file contains the smart contracts per-se. See Scenarios.daml for unit tests
+-- which serve as examples of the workflows.
+
+daml 1.2
+module Main where
+
+-- Wallet tracking tokens issued to a single owner. 
+-- An owner is authorized to tokens by virtue of having a (initially empty)
+-- `Wallet` contract.
+-- An owner can only see their own wallet. The issuer can see everybody's.
+template Wallet
+  with 
+    owner: Party
+    issuer: Party
+    tokens: Int
+    maxTokens: Int
+    -- name: String -- This could be added to differentiate Tokens.
+  where
+    ensure tokens >= 0 && tokens <= maxTokens
+    signatory issuer
+    observer owner
+
+    -- The issuer, being the `signatory` to the contract can freely update wallets.
+    controller issuer can 
+
+      -- Only authorized investors can `RequestTokens`
+      nonconsuming AuthorizeInvestor: ContractId Wallet
+        with 
+          investor: Party
+          maxTokens': Int
+        do create Wallet with 
+            owner = investor
+            issuer
+            tokens = 0
+            maxTokens = maxTokens'
+
+      -- Transfer tokens to another wallet, returning the updated source and target wallets.
+      TransferTokens: (ContractId Wallet, ContractId Wallet)
+        with quantity: Int ; toWalletId: ContractId Wallet
+        do
+          remainder <- create this with tokens = tokens - quantity
+          toWallet <- fetch toWalletId
+          _ <- exercise toWalletId Archive
+          quotient <- create toWallet with tokens = toWallet.tokens + quantity
+          return (remainder, quotient)
+
+      -- Delegates to `TransferTokens` with the requested quantity.
+      nonconsuming AcceptTokenRequest: (ContractId Wallet, ContractId Wallet)
+        with requestId: ContractId TokenRequest
+        do 
+          request <- fetch requestId
+          exercise self TransferTokens with 
+            quantity = request.quantity
+            toWalletId = request.walletId
+
+    -- The owner, being only an observer, needs to create `RequestTokens` rather than
+    -- updating the contract. In other words, they have a read-only view.
+    controller owner can
+
+      -- Creates a new type of 'request' contract. Does not modify the existing contract.
+      nonconsuming RequestTokens: ContractId TokenRequest
+        with 
+          requestedQuantity: Int
+        do create TokenRequest with 
+            issuer = this.issuer
+            owner = this.owner
+            walletId = self
+            quantity = requestedQuantity
+
+-- Separate contract which allows an investor to initiate transfers.
+template TokenRequest
+  with
+    issuer: Party
+    owner: Party
+    walletId: ContractId Wallet
+    quantity: Int
+  where
+    signatory owner,issuer
