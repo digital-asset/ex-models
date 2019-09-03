@@ -2,7 +2,7 @@
 
 ## Overview
 
-This example models a chess game between two players. It's similar in spirit to the tic tac toe examples, but demonstrates more comples rule data.
+This example models a chess game between two players. It's similar in spirit to the tic tac toe examples, but demonstrates more complex rule data.
 
 ## Workflow
 1. A player invites another player by creating a `GameProposal`.
