@@ -5,7 +5,7 @@ This project demonstrates how embedding DAML contracts can be used to prevent in
 This example is a simplified version of auctions [used for IPOs](https://en.wikipedia.org/wiki/Dutch_auction#Public_offerings). You can see a more elaborate example in [bond issuance](https://github.com/digital-asset/ex-bond-issuance).
 
 ## Workflow
-There is a `seller` party, and two or more bidders. The `seller` generates an `Auction` contract, only vibile to her, and then embedds it into `AuctionInvitation`s for each individual participant. Each bidder responds to the invitaiton with a `Bid`, visible _only to him and the seller_. When the auction finishes at `Auction.end` time, an off-ledger process collects all the bids, caluclates the resulting allocations as an `AuctionResult`.
+There is a `seller` party, and two or more bidders. The `seller` generates an `Auction` contract, only visible to her, and then embeds it into `AuctionInvitation`s for each individual participant. Each bidder responds to the invitation with a `Bid`, visible _only to him and the seller_. When the auction finishes at `Auction.end` time, an off-ledger process collects all the bids, calculates the resulting allocations as an `AuctionResult`.
 
 ## Building
 ```

@@ -1,7 +1,7 @@
 # Governance
 
 ## Overview
-The governance model extends the [Voting](../Voting/README.md) example with functionality to vote on specific changes to the ledger. This is a simple form of on-ledger governance where users decide how a given model evolves. In the example the citizens can vote to create a constitution with a given text, to change the text of an existing constitution, or to upgrade the constitution contract itself. The newer version of the constitution contract gives the government the option to create ballots directly, as opposed to going through the invite/accept onboarding process of voters.
+The governance model extends the [Voting](../Voting/README.md) example with functionality to vote on specific changes to the ledger. This is a simple form of on-ledger governance where users decide how a given model evolves. In the example the citizens can vote to create a constitution with a given text, to change the text of an existing constitution, or to upgrade the constitution contract itself. The newer version of the constitution contract gives the government the option to create ballots directly, as opposed to going through the invite/accept inbreeding process of voters.
 
 ## Workflow
 1. The `government` creates a `Ballot` for one of three available `Proposal`s.
