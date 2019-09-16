@@ -1,0 +1,16 @@
+sdk-version: 0.13.23
+name: generic-auction-market
+source: daml
+parties:
+  - Auctioneer
+  - BrokerDealer1
+  - BrokerDealer2
+  - Investor1
+  - Investor2
+  - Issuer
+  - Owner
+  - Regulator
+version: 1.0.0
+dependencies:
+  - daml-prim
+  - daml-stdlib

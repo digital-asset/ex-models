@@ -1,0 +1,245 @@
+daml 1.2
+module Auction where
+
+import Asset
+import Fungible
+import Locked
+import Transferable
+
+
+import DA.List
+import DA.Optional
+
+
+allocBids : Decimal -> Decimal -> Allocation -> (Decimal, Allocation)
+allocBids _ 0.0 alloc = (0.0, alloc with quantity = 0.0)
+allocBids resPx remQty alloc | alloc.price >= resPx =
+  if remQty >= alloc.quantity then (remQty - alloc.quantity, alloc)
+  else (0.0, alloc with quantity = remQty)
+allocBids _ remQty a = (remQty, a with quantity = 0.0)  -- reserve price not met
+
+
+disclosuresToParty : forall t.
+  (Asset t,
+  LockableInstance t,
+  FungibleInstance t,
+  TransferableInstance t) => t -> Text -> Party -> Update ()
+disclosuresToParty a l p = do
+  (lockCid, _) <- fetchByKey @(Lockable t) (a.issuer, a.owner)
+  lockCid <- exercise lockCid DiscloseLockable with party = p
+  (fungCid, _) <- fetchByKey @(Fungible t) (a.issuer, a.owner)
+  exercise fungCid DiscloseFungible with party = p
+  (transCid, _) <- fetchByKey @(Transferable t) (a.issuer, a.owner)
+  exercise transCid DiscloseTransferable with party = p
+  return ()
+
+
+data AuctionDetails t = AuctionDetails
+  with
+    asset : t
+  deriving (Eq, Show)
+
+
+data Allocation = Allocation
+  with
+    party    : Party
+    price    : Decimal
+    quantity : Decimal
+  deriving (Eq, Show)
+
+
+template (Quantity t,
+          LockableInstance t,
+          FungibleInstance t,
+          TransferableInstance t,
+          Template (Auction t)) => Auctioneer t
+  with
+    auctioneer : Party
+    observers  : [Party]
+  where
+    signatory auctioneer
+
+    observer observers
+
+    nonconsuming choice AuctionAsset : ContractId (Auction t) with
+        assetOwner       : Party
+        assetCid         : ContractId t
+        reservePrice     : Decimal
+        oversightParties : [Party]
+        auctionId        : Text
+      controller assetOwner
+        do
+          asset <- fetch assetCid
+          assert (asset.owner == assetOwner)
+          disclosuresToParty asset auctionId auctioneer  -- perform disclosures
+          (lockCid, _) <- fetchByKey @(Lockable t) (asset.issuer, assetOwner)
+          -- lock the asset
+          lockedCid <- exercise lockCid LockAsset with escrow = auctioneer, assetCid, lockId = auctionId
+          create $ Auction with asset, auctioneer, reservePrice, auctionId, participants = [], oversightParties
+
+
+template (Quantity t,
+          Template (AuctionInvitation t),
+          BidInstance t,
+          Template (AuctionResult t)) => Auction t
+  with
+    asset            : t
+    auctioneer       : Party
+    reservePrice     : Decimal
+    auctionId        : Text
+    participants     : [Party]
+    oversightParties : [Party]
+  where
+    signatory auctioneer, asset.owner
+
+    controller auctioneer can
+      InviteBidder : (ContractId (AuctionInvitation t), ContractId (Auction t))
+        with
+          bidder : Party
+        do
+          let invitationNum = length participants
+          auctionCid <- create this with participants = bidder :: participants
+          auctionInvitationCid <- create $ AuctionInvitation asset auctioneer
+            bidder auctionId invitationNum oversightParties
+          return (auctionInvitationCid, auctionCid)
+
+      CompleteAuction : ContractId (AuctionResult t)
+        do
+          let keys = map (\p -> (auctioneer, auctionId, p)) [0..(length participants)]
+          optBids <- mapA (lookupByKey @(Bid t)) keys
+          bids <- mapA fetch $ catOptionals optBids
+          let sortedBids = (sortOn (\b -> Down b.price)) (map (.bid) bids)
+              allocs = mapAccumL (allocBids reservePrice) asset.amount sortedBids
+              unfilledQty = allocs._1
+              filledAllocs = filter (\a -> a.quantity > 0.0) allocs._2
+              fillPrice = case filledAllocs of
+                [] -> 0.0
+                as -> let a = last as in a.price
+              fills = map (\a -> a with price = fillPrice) filledAllocs
+          create $ AuctionResult asset auctioneer auctionId fills
+            unfilledQty [] oversightParties
+
+
+template (Quantity t,
+          Template (Bid t)) => AuctionInvitation t
+  with
+    asset            : t
+    auctioneer       : Party
+    bidder           : Party
+    auctionId        : Text
+    invitationNum    : Int
+    oversightParties : [Party]
+  where
+    signatory auctioneer, asset.owner
+
+    observer oversightParties
+
+    key (auctioneer, auctionId, invitationNum) : (Party, Text, Int)
+
+    maintainer key._1
+
+    controller bidder can
+      SubmitBid : ContractId (Bid t)
+        with
+          price    : Decimal
+          quantity : Decimal
+        do
+          assert (quantity > 0.0 && quantity <= asset.amount)
+          let bid = Allocation with party = bidder, ..
+          create $ Bid asset auctioneer bid auctionId invitationNum oversightParties
+
+
+template Asset t => Bid t
+  with
+    asset            : t
+    auctioneer       : Party
+    bid              : Allocation
+    auctionId        : Text
+    invitationNum    : Int
+    oversightParties : [Party]
+  where
+    let bidder = bid.party
+
+    signatory bidder, auctioneer, asset.owner
+
+    observer oversightParties
+
+    key (auctioneer, auctionId, invitationNum) : (Party, Text, Int)
+
+    maintainer key._1
+
+
+template (Quantity t,
+          LockedInstance t,
+          FungibleInstance t,
+          TransferableInstance t,
+          LockableInstance t) => AuctionResult t
+  with
+    asset            : t
+    auctioneer       : Party
+    auctionId        : Text
+    fills            : [Allocation]
+    unfilledQty      : Decimal
+    claimed          : [Party]
+    oversightParties : [Party]
+  where
+    let auctionWinners = map (\i -> i.party) fills
+        filledQty = sum (map (.quantity) fills)
+        claimedAllocations = filter (\a -> elem a.party claimed) fills
+        ownerClaimed = if elem asset.owner claimed then unfilledQty else 0.0
+        claimedQty = sum (map (.quantity) claimedAllocations) + ownerClaimed
+        totalQty = filledQty + unfilledQty
+
+    signatory auctioneer, asset.owner
+
+    observer auctionWinners ++ oversightParties
+
+    ensure filledQty + unfilledQty == asset.amount
+
+    controller auctioneer can
+      AwardAsset : (ContractId (AuctionResult t))
+        with
+          winner : Party
+        do
+          -- check that winner is valid and has not already claimed
+          let winners = map (\f -> f.party) fills
+          assert (elem winner winners && notElem winner claimed)
+
+          let fill = fromSome $ find (\f -> f.party == winner) fills
+          (lockedCid, locked) <- fetchByKey @(Locked t) (asset.owner, auctionId)
+          assetCid <- exercise lockedCid UnlockAsset
+          if fill.quantity < totalQty - claimedQty
+          then do
+            (fungCid, _) <- fetchByKey @(Fungible t) (asset.issuer, asset.owner)
+            (splitCid, restCid) <- exercise fungCid SplitAsset
+              with assetCid, splitAmount = fill.quantity
+            (transCid, _) <- fetchByKey @(Transferable t) (asset.issuer, asset.owner)
+            exercise transCid TransferToNewOwner
+              with assetCid = splitCid, newOwner = winner
+            (lockCid, _) <- fetchByKey @(Lockable t) (asset.issuer, asset.owner)
+            exercise lockCid LockAsset
+              with escrow = auctioneer, assetCid = restCid, lockId = auctionId
+            create this with claimed = winner :: claimed
+          else do
+            (transCid, _) <- fetchByKey @(Transferable t) (asset.issuer, asset.owner)
+            exercise transCid TransferToNewOwner with assetCid, newOwner = winner
+            create this with claimed = winner :: claimed
+
+    controller asset.owner can
+      ClaimUnfilledQuantity : ContractId (AuctionResult t)
+        do
+          assert (unfilledQty > 0.0)
+          assert (notElem asset.owner claimed)
+          (lockedCid, locked) <- fetchByKey @(Locked t) (asset.owner, auctionId)
+          assetCid <- exercise lockedCid UnlockAsset
+          if unfilledQty < totalQty - claimedQty
+          then do
+            (fungCid, _) <- fetchByKey @(Fungible t) (asset.issuer, asset.owner)
+            (splitCid, restCid) <- exercise fungCid SplitAsset
+              with assetCid, splitAmount = unfilledQty
+            (lockCid, _) <- fetchByKey @(Lockable t) (asset.issuer, asset.owner)
+            exercise lockCid LockAsset
+              with escrow = auctioneer, assetCid = restCid, lockId = auctionId
+            create this with claimed = asset.owner :: claimed
+          else do
+            create this with claimed = asset.owner :: claimed

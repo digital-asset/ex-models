@@ -1,0 +1,178 @@
+daml 1.2
+module Main where
+
+import Asset
+import Auction
+import Fungible
+import Issuer
+import Locked
+import Transferable
+import SecondaryMarket
+
+
+instance Asset Cash
+instance Quantity Cash
+template instance CashFungible = Fungible Cash
+template instance CashLocked = Locked Cash
+template instance CashLockable = Lockable Cash
+template instance CashTransferable = Transferable Cash
+template instance CashAuctioneer = Auctioneer Cash
+template instance CashAuction = Auction Cash
+template instance CashAuctionInvitation = AuctionInvitation Cash
+template instance CashBid = Bid Cash
+template instance CashAuctionResult = AuctionResult Cash
+template instance CashIssuer = Issuer Cash
+
+instance Asset Gold
+instance Quantity Gold
+template instance GoldFungible = Fungible Gold
+template instance GoldLocked = Locked Gold
+template instance GoldLockable = Lockable Gold
+template instance GoldTransferable = Transferable Gold
+template instance GoldAuctioneer = Auctioneer Gold
+template instance GoldAuction = Auction Gold
+template instance GoldAuctionInvitation = AuctionInvitation Gold
+template instance GoldBid = Bid Gold
+template instance GoldAuctionResult = AuctionResult Gold
+template instance GoldIssuer = Issuer Gold
+
+instance Asset Receivable
+instance Quantity Receivable
+template instance ReceivableFungible = Fungible Receivable
+template instance ReceivableLocked = Locked Receivable
+template instance ReceivableLockable = Lockable Receivable
+template instance ReceivableTransferable = Transferable Receivable
+template instance ReceivableAuctioneer = Auctioneer Receivable
+template instance ReceivableAuction = Auction Receivable
+template instance ReceivableAuctionInvitation = AuctionInvitation Receivable
+template instance ReceivableBid = Bid Receivable
+template instance ReceivableAuctionResult = AuctionResult Receivable
+template instance ReceivableIssuer = Issuer Receivable
+
+
+auctionExample = scenario do
+  auctioneer <- getParty "Auctioneer"
+  investor1  <- getParty "Investor1"
+  investor2  <- getParty "Investor2"
+  issuer     <- getParty "Issuer"
+  owner      <- getParty "Owner"
+  regulator  <- getParty "Regulator"
+
+  -- Issuer issues Cash to Owner
+  assetCid <- issuer `submit` create $ Cash
+    with issuer, owner, amount = 1000.0, currency = "USD"
+
+  -- Issuer permits Owner to Split, Transfer and Lock their Cash
+  let issuerData : Issuer Cash = Issuer with issuer = issuer, observers = [owner]
+  issuerCid <- issuer `submit` create issuerData
+  owner `submit` exercise issuerCid UseAssets with party = owner
+
+  -- Auctioneer creates role contract and lets the owner know he is open for business
+  let auctioneerData : Auctioneer Cash = Auctioneer with auctioneer, observers=[owner]
+  auctioneerCid <- auctioneer `submit` create auctioneerData
+
+  -- Owner decides to auction their asset with a reserve price of 100
+  -- and invite the regulator
+  auctionCid <- owner `submit` exercise auctioneerCid AuctionAsset
+    with assetOwner = owner, assetCid, reservePrice = 100.0,
+          oversightParties = [regulator], auctionId = "auction123"
+
+  -- Auctioneer invites Investor1 and Investor2 as bidders
+  (invitation1Cid, auctionCid) <- auctioneer `submit` exercise auctionCid InviteBidder
+    with bidder = investor1
+  (invitation2Cid, auctionCid) <- auctioneer `submit` exercise auctionCid InviteBidder
+    with bidder = investor2
+
+  -- Investors submit their bids
+  bid1Cid <- investor1 `submit` exercise invitation1Cid SubmitBid
+    with price = 200.0, quantity = 300.0
+  bid2Cid <- investor2 `submit` exercise invitation2Cid SubmitBid
+    with price = 170.0, quantity = 600.0
+
+  -- Auctioneer completes the auction
+  auctionResultCid <- auctioneer `submit` exercise auctionCid CompleteAuction
+
+  -- He then awards the assets to each investor
+  auctionResultCid <- auctioneer `submit` exercise auctionResultCid AwardAsset
+    with winner = investor1
+  auctionResultCid <- auctioneer `submit` exercise auctionResultCid AwardAsset
+    with winner = investor2
+
+  -- Finally the owner claims back the quantity that was not awarded
+  auctionResultCid <- owner `submit` exercise auctionResultCid ClaimUnfilledQuantity
+
+  return ()
+
+
+template instance CashBrokerDealer = BrokerDealer Cash
+template instance CashBrokerSellInstruction = BrokerSellInstruction Cash
+template instance CashBrokerBuyInstruction = BrokerBuyInstruction Cash
+template instance CashTrade = Trade Cash
+template instance CashMarketOffer = MarketOffer Cash
+template instance CashMarketBid = MarketBid Cash
+
+template instance GoldBrokerDealer = BrokerDealer Gold
+template instance GoldBrokerSellInstruction = BrokerSellInstruction Gold
+template instance GoldBrokerBuyInstruction = BrokerBuyInstruction Gold
+template instance GoldTrade = Trade Gold
+template instance GoldMarketOffer = MarketOffer Gold
+template instance GoldMarketBid = MarketBid Gold
+
+template instance ReceivableBrokerDealer = BrokerDealer Receivable
+template instance ReceivableBrokerSellInstruction = BrokerSellInstruction Receivable
+template instance ReceivableBrokerBuyInstruction = BrokerBuyInstruction Receivable
+template instance ReceivableTrade = Trade Receivable
+template instance ReceivableMarketOffer = MarketOffer Receivable
+template instance ReceivableMarketBid = MarketBid Receivable
+
+
+marketExample = scenario do
+  owner <- getParty "Owner"
+  broker1  <- getParty "BrokerDealer1"
+  broker2  <- getParty "BrokerDealer2"
+  issuer <- getParty "Issuer"
+  regulator <- getParty "Regulator"
+
+  -- Issuer issues Cash to Owner
+  assetCid <- issuer `submit` create $ Cash
+    with issuer, owner, amount = 1000.0, currency = "USD"
+
+  -- Issuer permits Owner to Split, Transfer and Lock their Cash
+  let issuerData : Issuer Cash = Issuer with issuer = issuer, observers = [owner, broker1, broker2]
+  issuerCid <- issuer `submit` create issuerData
+  owner `submit` exercise issuerCid UseAssets with party = owner
+  broker1 `submit` exercise issuerCid UseAssets with party = broker1
+  broker2 `submit` exercise issuerCid UseAssets with party = broker2
+
+  let brokerDealerData : BrokerDealer Cash = BrokerDealer with brokerDealer = broker1, observers=[owner]
+  brokerDealerCid <- broker1 `submit` create brokerDealerData
+
+  sellInstructionCid <- owner `submit` exercise brokerDealerCid SellAsset
+    with assetOwner = owner, assetCid, orderType = Limit 100.0,
+          oversightParties = [regulator], instructionId = "sell123"
+
+  broker1 `submit` exercise sellInstructionCid BuyAsPrincipal with price = 100.0
+
+  assetCid <- issuer `submit` create $ Cash
+    with issuer, owner, amount = 1000.0, currency = "USD"
+
+  sellInstructionCid <- owner `submit` exercise brokerDealerCid SellAsset
+    with assetOwner = owner, assetCid, orderType = Limit 120.0,
+          oversightParties = [regulator], instructionId = "sell456"
+
+  marketOfferCid <- broker1 `submit` exercise sellInstructionCid CrateMarketOffer with price = 125.0, brokerDealers = [broker2]
+
+  broker2 `submit` exercise marketOfferCid LiftOfferAsPrincipal with buyer = broker2
+
+  buyInstructionCid <- owner `submit` exercise brokerDealerCid BuyAsset with buyer = owner, orderType = Market, quantity = 600.0, oversightParties = [regulator], instructionId = "buy789"
+
+  assetCid <- issuer `submit` create $ Cash
+    with issuer, owner = broker1, amount = 1000.0, currency = "USD"
+
+  broker1 `submit` exercise buyInstructionCid SellAsPrincipal with price = 200.0, assetCid
+
+  buyInstructionCid <- owner `submit` exercise brokerDealerCid BuyAsset with buyer = owner, orderType = Limit 123.0, quantity = 200.0, oversightParties = [regulator], instructionId = "buy91011"
+
+  broker1 `submit` exercise buyInstructionCid CreateMarketBid with price = 123.0, brokerDealers = [broker2]
+
+  return ()
