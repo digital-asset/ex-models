@@ -1,0 +1,306 @@
+daml 1.2
+module SecondaryMarket where
+
+import Asset
+import Fungible
+import Locked
+import Transferable
+
+
+data OrderType = Market | Limit Decimal deriving (Eq, Show)
+data BuySell = Buy | Sell deriving (Eq, Show)
+
+verifyPrice : OrderType -> BuySell -> Decimal -> Bool
+verifyPrice Market _ _ = True
+verifyPrice (Limit l) Buy p = p <= l
+verifyPrice (Limit l) Sell p = p >= l
+
+disclosuresToParty : forall t.
+  (Asset t,
+  LockableInstance t,
+  LockedInstance t,
+  FungibleInstance t,
+  TransferableInstance t) => t -> Text -> Party -> Update ()
+disclosuresToParty a l p = do
+  (lockCid, _) <- fetchByKey @(Lockable t) (a.issuer, a.owner)
+  lockCid <- exercise lockCid DiscloseLockable with party = p
+  (fungCid, _) <- fetchByKey @(Fungible t) (a.issuer, a.owner)
+  exercise fungCid DiscloseFungible with party = p
+  (transCid, _) <- fetchByKey @(Transferable t) (a.issuer, a.owner)
+  exercise transCid DiscloseTransferable with party = p
+  optLockedCid <- lookupByKey @(Locked t) (a.owner, l)
+  case optLockedCid of
+    None -> return ()
+    Some lockedCid -> do
+      exercise lockedCid DiscloseLocked with party = p
+      return ()
+
+
+template (LockableInstance t,
+          LockedInstance t,
+          FungibleInstance t,
+          TransferableInstance t,
+          Template (BrokerSellInstruction t),
+          Template (BrokerBuyInstruction t)) => BrokerDealer t
+  with
+    brokerDealer : Party
+    observers    : [Party]
+  where
+    signatory brokerDealer
+
+    observer observers
+
+    nonconsuming choice SellAsset : ContractId (BrokerSellInstruction t) with
+        assetOwner       : Party
+        assetCid         : ContractId t
+        orderType        : OrderType
+        oversightParties : [Party]
+        instructionId    : Text
+      controller assetOwner
+        do
+          asset <- fetch assetCid
+          assert (asset.owner == assetOwner)
+          disclosuresToParty asset instructionId brokerDealer  -- perform disclosures
+          -- lock the asset
+          (lockCid, _) <- fetchByKey @(Lockable t) (asset.issuer, assetOwner)
+          lockedCid <- exercise lockCid LockAsset
+            with escrow = brokerDealer, assetCid, lockId = instructionId
+          create $ BrokerSellInstruction
+            with asset, brokerDealer, orderType, instructionId
+
+    nonconsuming choice BuyAsset : ContractId (BrokerBuyInstruction t) with
+        buyer            : Party
+        orderType        : OrderType
+        quantity         : Decimal
+        oversightParties : [Party]
+        instructionId    : Text
+      controller buyer
+        do
+          create $ BrokerBuyInstruction @t
+            buyer brokerDealer orderType quantity instructionId
+
+
+template (Quantity t,
+          LockedInstance t,
+          FungibleInstance t,
+          TransferableInstance t,
+          Template (Trade t),
+          Template (MarketBid t)) => BrokerBuyInstruction t
+  with
+    buyer         : Party
+    brokerDealer  : Party
+    orderType     : OrderType
+    quantity      : Decimal
+    instructionId : Text
+  where
+    signatory brokerDealer, buyer
+
+    key (brokerDealer, instructionId) : (Party, Text)
+
+    maintainer key._1
+
+    controller brokerDealer can
+      SellAsPrincipal : ContractId (Trade t)
+        with
+          price    : Decimal
+          assetCid : ContractId t
+        do
+          assert (verifyPrice orderType Sell price)
+          asset <- fetch assetCid
+          assert (asset.owner == brokerDealer)
+          assert (asset.amount >= quantity)
+          if quantity < asset.amount
+          then do
+            (fungCid, _) <- fetchByKey @(Fungible t) (asset.issuer, asset.owner)
+            (splitCid, restCid) <- exercise fungCid SplitAsset
+              with assetCid, splitAmount = quantity
+            (transCid, _) <- fetchByKey @(Transferable t) (asset.issuer, asset.owner)
+            exercise transCid TransferToNewOwner
+              with assetCid = splitCid, newOwner = buyer
+            create $ Trade with asset = (asset with amount = quantity),
+                                  price, buyer, seller = brokerDealer
+          else do
+            (transCid, _) <- fetchByKey @(Transferable t) (asset.issuer, asset.owner)
+            exercise transCid TransferToNewOwner with assetCid, newOwner = buyer
+            create $ Trade with asset = asset, price, buyer, seller = brokerDealer
+
+      CreateMarketBid : ContractId (MarketBid t)
+        with
+          price         : Decimal
+          brokerDealers : [Party]
+        do
+          assert (verifyPrice orderType Sell price)
+          create $ MarketBid @t buyer brokerDealer price quantity brokerDealers
+
+
+template (Quantity t,
+          Template (Trade t)) => MarketBid t
+  with
+    buyer         : Party
+    brokerDealer  : Party
+    price         : Decimal
+    quantity      : Decimal
+    brokerDealers : [Party]
+  where
+    signatory brokerDealer, buyer
+
+    observer brokerDealers
+
+    choice HitBid : ContractId (Trade t) with
+        seller : Party
+        asset  : t
+      controller seller
+        do
+          assert (elem seller brokerDealers)
+          assert (asset.amount == quantity)
+          create $ Trade with asset, price = price, buyer = brokerDealer, seller
+          create $ Trade with asset, price = price, buyer, seller = brokerDealer
+
+
+template (Asset t,
+          LockableInstance t,
+          FungibleInstance t,
+          TransferableInstance t,
+          LockedInstance t,
+          Template (Trade t),
+          Template (MarketOffer t),
+          MarketBidInstance t) => BrokerSellInstruction t
+  with
+    asset         : t
+    brokerDealer  : Party
+    orderType     : OrderType
+    instructionId : Text
+  where
+    signatory brokerDealer, asset.owner
+
+    controller brokerDealer can
+      BuyAsPrincipal : ContractId (Trade t)
+        with
+          price : Decimal
+        do
+          assert (verifyPrice orderType Sell price)
+          (lockedCid, locked) <- fetchByKey @(Locked t) (asset.owner, instructionId)
+          exercise lockedCid UnlockAndTransferAsset with newOwner = brokerDealer
+          create $ Trade with asset = locked.asset, price,
+                                buyer = brokerDealer, seller = locked.asset.owner
+
+      CrateMarketOffer : ContractId (MarketOffer t)
+        with
+          price         : Decimal
+          brokerDealers : [Party]
+        do
+          assert (verifyPrice orderType Sell price)
+          mapA (disclosuresToParty asset instructionId) brokerDealers  -- perform disclosures
+          create MarketOffer with brokerDealer, brokerDealers,
+                                    asset, assetLockId = instructionId, price
+
+      FillWithBid : ContractId (Trade t)
+        with
+          bidCid : ContractId (MarketBid t)
+        do
+          bid <- fetch bidCid
+          assert (verifyPrice orderType Sell bid.price)
+          (lockedCid, locked) <- fetchByKey @(Locked t) (asset.owner, instructionId)
+          assetCid <- exercise lockedCid UnlockAsset
+          assert (locked.asset == asset)
+          assert (asset.amount >= bid.quantity)
+          if asset.amount > bid.quantity
+          then do
+            (fungCid, _) <- fetchByKey @(Fungible t) (asset.issuer, asset.owner)
+            (splitCid, restCid) <- exercise fungCid SplitAsset
+              with assetCid, splitAmount = bid.quantity
+            (transCid, _) <- fetchByKey @(Transferable t) (asset.issuer, asset.owner)
+            exercise transCid TransferToNewOwner
+              with assetCid = splitCid, newOwner = bid.buyer
+            exercise transCid TransferToNewOwner
+              with assetCid = restCid, newOwner = brokerDealer
+            -- selling BD buys from owner
+            create $ Trade with asset, price = bid.price,
+                                  buyer = brokerDealer, seller = asset.owner
+            exercise bidCid HitBid with seller = brokerDealer,
+                                          asset = asset with amount = bid.quantity
+          else do
+            (transCid, _) <- fetchByKey @(Transferable t) (asset.issuer, asset.owner)
+            exercise transCid TransferToNewOwner
+              with assetCid, newOwner = bid.buyer
+            create $ Trade with asset, price = bid.price,
+                                  buyer = brokerDealer, seller = asset.owner
+            exercise bidCid HitBid with seller = brokerDealer, asset
+
+
+template Trade t
+  with
+    asset  : t
+    price  : Decimal
+    buyer  : Party
+    seller : Party
+  where
+    signatory buyer, seller
+
+
+template (Quantity t,
+          LockedInstance t,
+          Template (Trade t),
+          BrokerBuyInstructionInstance t) => MarketOffer t
+  with
+    brokerDealer  : Party
+    brokerDealers : [Party]
+    assetLockId   : Text
+    asset         : t
+    price         : Decimal
+  where
+    signatory brokerDealer, asset.owner
+
+    observer brokerDealers
+
+    choice LiftOfferAsPrincipal : ContractId (Trade t) with
+        buyer : Party
+      controller buyer
+        do
+          assert (elem buyer brokerDealers)
+          (lockedCid, locked) <- fetchByKey @(Locked t) (asset.owner, assetLockId)
+          assert (locked.asset == asset)
+          exercise lockedCid UnlockAndTransferAsset with newOwner = buyer
+          -- notify asset owner that they traded
+          create $ Trade with asset = locked.asset, price,
+                                buyer = brokerDealer, seller = locked.asset.owner
+          -- register the trade between the broker dealers
+          create $ Trade with asset = locked.asset, price, buyer, seller = brokerDealer
+
+    choice LiftOffer : ContractId (Trade t) with
+        buyer            : Party
+        buyInstructionId : Text
+      controller buyer
+        do
+          assert (elem buyer brokerDealers)
+          (instructionCid, instruction) <-
+            fetchByKey @(BrokerBuyInstruction t) (buyer, buyInstructionId)
+          (lockedCid, locked) <- fetchByKey @(Locked t) (asset.owner, assetLockId)
+          assetCid <- exercise lockedCid UnlockAsset
+          assert (locked.asset == asset)
+          assert (verifyPrice instruction.orderType Buy price)
+          assert (asset.amount >= instruction.quantity)
+          if asset.amount > instruction.quantity
+          then do
+            (fungCid, _) <- fetchByKey @(Fungible t) (asset.issuer, asset.owner)
+            (splitCid, restCid) <- exercise fungCid SplitAsset
+              with assetCid, splitAmount = instruction.quantity
+            (transCid, _) <- fetchByKey @(Transferable t) (asset.issuer, asset.owner)
+            exercise transCid TransferToNewOwner
+              with assetCid = splitCid, newOwner = instruction.buyer
+            exercise transCid TransferToNewOwner
+              with assetCid = restCid, newOwner = buyer
+            -- Selling BD buys it from owner
+            create $ Trade with asset, price, buyer = brokerDealer, seller = asset.owner
+            -- Selling BD sells it to BuyingBD
+            create $ Trade with asset, price, buyer, seller = brokerDealer
+            -- Buying BD sells it to buying instruction (and keeps the rest)
+            create $ Trade with asset = (asset with amount = instruction.quantity),
+                                  price, buyer = instruction.buyer, seller = buyer
+          else do
+            (transCid, _) <- fetchByKey @(Transferable t) (asset.issuer, asset.owner)
+            exercise transCid TransferToNewOwner
+              with assetCid, newOwner = instruction.buyer
+            create $ Trade with asset, price, buyer = brokerDealer, seller = asset.owner
+            create $ Trade with asset, price, buyer, seller = brokerDealer
+            create $ Trade with asset, price, buyer = instruction.buyer, seller = buyer
