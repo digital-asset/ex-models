@@ -1,4 +1,4 @@
-sdk-version: 0.13.23
+sdk-version: 0.13.25
 name: generic-auction-market
 source: daml
 parties:
