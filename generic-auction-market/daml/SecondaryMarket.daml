@@ -15,12 +15,13 @@ verifyPrice Market _ _ = True
 verifyPrice (Limit l) Buy p = p <= l
 verifyPrice (Limit l) Sell p = p >= l
 
-disclosuresToParty : forall t.
-  (Asset t,
-  LockableInstance t,
-  LockedInstance t,
-  FungibleInstance t,
-  TransferableInstance t) => t -> Text -> Party -> Update ()
+disclosuresToParty :
+  forall t.
+    (Asset t,
+    Template (Lockable t),
+    Template (Locked t),
+    Template (Fungible t),
+    Template (Transferable t)) => t -> Text -> Party -> Update ()
 disclosuresToParty a l p = do
   (lockCid, _) <- fetchByKey @(Lockable t) (a.issuer, a.owner)
   lockCid <- exercise lockCid DiscloseLockable with party = p
@@ -36,10 +37,10 @@ disclosuresToParty a l p = do
       return ()
 
 
-template (LockableInstance t,
-          LockedInstance t,
-          FungibleInstance t,
-          TransferableInstance t,
+template (Template (Lockable t),
+          Template (Locked t),
+          Template (Fungible t),
+          Template (Transferable t),
           Template (BrokerSellInstruction t),
           Template (BrokerBuyInstruction t)) => BrokerDealer t
   with
@@ -81,9 +82,9 @@ template (LockableInstance t,
 
 
 template (Quantity t,
-          LockedInstance t,
-          FungibleInstance t,
-          TransferableInstance t,
+          Template (Locked t),
+          Template (Fungible t),
+          Template (Transferable t),
           Template (Trade t),
           Template (MarketBid t)) => BrokerBuyInstruction t
   with
@@ -158,13 +159,13 @@ template (Quantity t,
 
 
 template (Asset t,
-          LockableInstance t,
-          FungibleInstance t,
-          TransferableInstance t,
-          LockedInstance t,
+          Template (Lockable t),
+          Template (Fungible t),
+          Template (Transferable t),
+          Template (Locked t),
           Template (Trade t),
           Template (MarketOffer t),
-          MarketBidInstance t) => BrokerSellInstruction t
+          Template (MarketBid t)) => BrokerSellInstruction t
   with
     asset         : t
     brokerDealer  : Party
@@ -239,9 +240,9 @@ template Trade t
 
 
 template (Quantity t,
-          LockedInstance t,
+          Template (Locked t),
           Template (Trade t),
-          BrokerBuyInstructionInstance t) => MarketOffer t
+          Template (BrokerBuyInstruction t)) => MarketOffer t
   with
     brokerDealer  : Party
     brokerDealers : [Party]
