@@ -30,8 +30,8 @@ template Quantity t => Fungible t
           assert (asset.issuer == issuer)
           assert (asset.amount > splitAmount)
           archive assetCid
-          splitCid <- create $ asset with amount = splitAmount
-          restCid <- create $ asset with amount = asset.amount - splitAmount
+          splitCid <- create asset with amount = splitAmount
+          restCid <- create asset with amount = asset.amount - splitAmount
           return (splitCid, restCid)
 
       nonconsuming MergeAssets : (ContractId t)
@@ -46,7 +46,7 @@ template Quantity t => Fungible t
           assert (first == second with amount = first.amount)
           archive firstAssetCid
           archive secondAssetCid
-          create $ first with amount = first.amount + second.amount
+          create first with amount = first.amount + second.amount
 
       DiscloseFungible : ContractId (Fungible t)
         with
