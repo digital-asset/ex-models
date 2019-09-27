@@ -29,7 +29,7 @@ template Asset t => Transferable t
           assert (asset.owner == owner)
           assert (asset.issuer == issuer)
           archive assetCid
-          create $ asset with owner = newOwner
+          create asset with owner = newOwner
 
       DiscloseTransferable : ContractId (Transferable t)
         with

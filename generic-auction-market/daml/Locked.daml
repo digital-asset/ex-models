@@ -38,7 +38,7 @@ template (Asset t, Template (Locked t)) => Lockable t
                   then observers else party :: observers
 
 
-template (Asset t) => Locked t
+template Asset t => Locked t
   with
     asset     : t
     escrow    : Party
@@ -61,7 +61,7 @@ template (Asset t) => Locked t
         with
           newOwner : Party
         do
-          create $ asset with owner = newOwner
+          create asset with owner = newOwner
 
       DiscloseLocked : ContractId (Locked t)
         with

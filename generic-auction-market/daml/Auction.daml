@@ -19,11 +19,13 @@ allocBids resPx remQty alloc | alloc.price >= resPx =
 allocBids _ remQty a = (remQty, a with quantity = 0.0)  -- reserve price not met
 
 
-disclosuresToParty : forall t.
-  (Asset t,
-  LockableInstance t,
-  FungibleInstance t,
-  TransferableInstance t) => t -> Text -> Party -> Update ()
+disclosuresToParty :
+  forall t.
+    (Asset t,
+     Template (Lockable t),
+     Template (Fungible t),
+     Template (Transferable t)) =>
+  t -> Text -> Party -> Update ()
 disclosuresToParty a l p = do
   (lockCid, _) <- fetchByKey @(Lockable t) (a.issuer, a.owner)
   lockCid <- exercise lockCid DiscloseLockable with party = p
@@ -48,11 +50,13 @@ data Allocation = Allocation
   deriving (Eq, Show)
 
 
-template (Quantity t,
-          LockableInstance t,
-          FungibleInstance t,
-          TransferableInstance t,
-          Template (Auction t)) => Auctioneer t
+template
+    (Quantity t,
+     Template (Lockable t),
+     Template (Fungible t),
+     Template (Transferable t),
+     Template (Auction t)) =>
+    Auctioneer t
   with
     auctioneer : Party
     observers  : [Party]
@@ -78,10 +82,12 @@ template (Quantity t,
           create $ Auction with asset, auctioneer, reservePrice, auctionId, participants = [], oversightParties
 
 
-template (Quantity t,
-          Template (AuctionInvitation t),
-          BidInstance t,
-          Template (AuctionResult t)) => Auction t
+template
+    (Quantity t,
+     Template (AuctionInvitation t),
+     Template (Bid t),
+     Template (AuctionResult t)) =>
+    Auction t
   with
     asset            : t
     auctioneer       : Party
@@ -120,8 +126,10 @@ template (Quantity t,
             unfilledQty [] oversightParties
 
 
-template (Quantity t,
-          Template (Bid t)) => AuctionInvitation t
+template
+    (Quantity t,
+     Template (Bid t)) =>
+    AuctionInvitation t
   with
     asset            : t
     auctioneer       : Party
@@ -169,11 +177,13 @@ template Asset t => Bid t
     maintainer key._1
 
 
-template (Quantity t,
-          LockedInstance t,
-          FungibleInstance t,
-          TransferableInstance t,
-          LockableInstance t) => AuctionResult t
+template
+    (Quantity t,
+     Template (Locked t),
+     Template (Fungible t),
+     Template (Transferable t),
+     Template (Lockable t)) =>
+    AuctionResult t
   with
     asset            : t
     auctioneer       : Party

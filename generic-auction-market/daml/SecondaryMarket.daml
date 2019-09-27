@@ -15,12 +15,14 @@ verifyPrice Market _ _ = True
 verifyPrice (Limit l) Buy p = p <= l
 verifyPrice (Limit l) Sell p = p >= l
 
-disclosuresToParty : forall t.
-  (Asset t,
-  LockableInstance t,
-  LockedInstance t,
-  FungibleInstance t,
-  TransferableInstance t) => t -> Text -> Party -> Update ()
+disclosuresToParty :
+  forall t.
+    (Asset t,
+     Template (Lockable t),
+     Template (Locked t),
+     Template (Fungible t),
+     Template (Transferable t)) =>
+  t -> Text -> Party -> Update ()
 disclosuresToParty a l p = do
   (lockCid, _) <- fetchByKey @(Lockable t) (a.issuer, a.owner)
   lockCid <- exercise lockCid DiscloseLockable with party = p
@@ -36,12 +38,14 @@ disclosuresToParty a l p = do
       return ()
 
 
-template (LockableInstance t,
-          LockedInstance t,
-          FungibleInstance t,
-          TransferableInstance t,
-          Template (BrokerSellInstruction t),
-          Template (BrokerBuyInstruction t)) => BrokerDealer t
+template
+    (Template (Lockable t),
+     Template (Locked t),
+     Template (Fungible t),
+     Template (Transferable t),
+     Template (BrokerSellInstruction t),
+     Template (BrokerBuyInstruction t)) =>
+    BrokerDealer t
   with
     brokerDealer : Party
     observers    : [Party]
@@ -80,12 +84,14 @@ template (LockableInstance t,
             buyer brokerDealer orderType quantity instructionId
 
 
-template (Quantity t,
-          LockedInstance t,
-          FungibleInstance t,
-          TransferableInstance t,
-          Template (Trade t),
-          Template (MarketBid t)) => BrokerBuyInstruction t
+template
+    (Quantity t,
+     Template (Locked t),
+     Template (Fungible t),
+     Template (Transferable t),
+     Template (Trade t),
+     Template (MarketBid t)) =>
+    BrokerBuyInstruction t
   with
     buyer         : Party
     brokerDealer  : Party
@@ -133,8 +139,10 @@ template (Quantity t,
           create $ MarketBid @t buyer brokerDealer price quantity brokerDealers
 
 
-template (Quantity t,
-          Template (Trade t)) => MarketBid t
+template
+    (Quantity t,
+     Template (Trade t)) =>
+    MarketBid t
   with
     buyer         : Party
     brokerDealer  : Party
@@ -157,14 +165,16 @@ template (Quantity t,
           create $ Trade with asset, price = price, buyer, seller = brokerDealer
 
 
-template (Asset t,
-          LockableInstance t,
-          FungibleInstance t,
-          TransferableInstance t,
-          LockedInstance t,
-          Template (Trade t),
-          Template (MarketOffer t),
-          MarketBidInstance t) => BrokerSellInstruction t
+template
+    (Asset t,
+     Template (Lockable t),
+     Template (Fungible t),
+     Template (Transferable t),
+     Template (Locked t),
+     Template (Trade t),
+     Template (MarketOffer t),
+     Template (MarketBid t)) =>
+    BrokerSellInstruction t
   with
     asset         : t
     brokerDealer  : Party
@@ -238,10 +248,12 @@ template Trade t
     signatory buyer, seller
 
 
-template (Quantity t,
-          LockedInstance t,
-          Template (Trade t),
-          BrokerBuyInstructionInstance t) => MarketOffer t
+template
+    (Quantity t,
+     Template (Locked t),
+     Template (Trade t),
+     Template (BrokerBuyInstruction t)) =>
+    MarketOffer t
   with
     brokerDealer  : Party
     brokerDealers : [Party]

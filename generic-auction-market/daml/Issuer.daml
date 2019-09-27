@@ -6,9 +6,11 @@ import Transferable
 import Locked
 
 
-template (Template (Fungible t),
-          Template (Lockable t),
-          Template (Transferable t)) => Issuer t
+template
+    (Template (Fungible t),
+     Template (Lockable t),
+     Template (Transferable t)) =>
+    Issuer t
   with
     issuer    : Party
     observers : [Party]
