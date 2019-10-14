@@ -1,0 +1,322 @@
+daml 1.2
+module ToDoList where
+
+import DA.Time
+
+template ToDoItem
+    with 
+        issuer : Party
+        assignee : Party
+        toDoDescription : Text
+    where
+        signatory issuer, assignee
+
+        controller assignee can
+            StartWorkingOnAToDo : ContractId ToDoItemStartWorking
+                do 
+                    now <- getTime
+                    create ToDoItemStartWorking 
+                        with
+                            toDo = this
+                            startTime = now
+
+template ToDoItemProposal 
+    with 
+        toDo : ToDoItem
+    where 
+        signatory toDo.issuer
+
+        controller toDo.assignee can 
+            -- what happens if a task is not accepted? Do I need to reject it explicitly?
+            AcceptToDo : ContractId ToDoItem
+                do 
+                    create toDo 
+                        with 
+                            issuer = toDo.issuer
+                            assignee = toDo.assignee
+
+            RejectAndReturnToDo : ContractId ToDoItemProposal
+                -- by default assign the original issuer as the assignee letting him/her know that the proposal has been rejected
+                do
+                    create this
+                        with 
+                            toDo = this.toDo 
+                                with 
+                                    assignee = toDo.issuer
+            
+            TransferToDo : ContractId ToDoItemProposal
+                with newAssignee : Party
+                do
+                    create this
+                        with 
+                            toDo = this.toDo 
+                                with 
+                                    assignee = newAssignee
+
+template ToDoItemStartWorking
+    with 
+        toDo : ContractId ToDoItem
+        startTime : Time
+        issuer : Party
+        assignee : Party
+    where 
+        signatory issuer, assignee
+
+        choice FinishToDoProposal : ContractId ToDoItemFinishWorkingProposal
+            with a : Party, i : Party
+            controller p 
+                do 
+                    todo <- fetch toDoId
+                    assert (todo.assigne == a) && (todo.issuer == b)
+                    create ToDoItemFinishWorkingProposal
+                        with 
+                            toDo = this.toDo
+                            startTime = this.startTime
+                            spentTime = this.spentTime
+
+        controller toDo.assignee can
+            FinishWorking : ContractId ToDoItemFinishWorkingProposal
+                with
+                    newComment : Text
+                do
+                    now <- getTime
+                    create ToDoItemFinishWorkingProposal
+                        with 
+                            toDo = this.toDo
+                            startTime = this.startTime
+                            finishTime = now
+                            spentTime = subTime now this.startTime
+                            comment = newComment
+
+template ToDoItemFinishWorking
+    with 
+        toDo :  ContractId ToDoItem
+        startTime : Time
+        finishTime : Time
+        spentTime : RelTime
+    where 
+        signatory toDo.issuer
+
+template ToDoItemFinishWorkingProposal
+    with 
+        toDo : ContractId ToDoItem
+        startTime : Time
+        finishTime : Time
+        spentTime : RelTime
+        comment : Text
+    where 
+        signatory toDo.assignee
+
+        controller toDo.issuer can
+            AcceptToDoDone : ContractId ToDoItemFinishWorking
+                do
+                    create ToDoItemFinishWorking
+                        with 
+                            toDo = this.toDo
+                            startTime = this.startTime
+                            finishTime = this.finishTime
+                            spentTime = this.spentTime
+ 
+            RejectToDoDone : ContractId ToDoItemContinueWorkingProposal
+                with
+                    newComment : Text
+                do
+                    create ToDoItemContinueWorkingProposal
+                        with
+                            toDo = this.toDo
+                            startTime = this.startTime
+                            finishTime = this.finishTime
+                            spentTime = this.spentTime
+                            comment = newComment
+
+template ToDoItemContinueWorkingProposal
+    with
+        toDo : ContractId ToDoItem
+        startTime : Time
+        finishTime :  Time
+        spentTime : RelTime
+        comment : Text
+        issuer: Party
+    where  
+        signatory issuer
+
+        choice Accept : ContractId ContinueWorkingToDo
+          with p : Party
+          controller p
+          do
+                    todo <- fetch toDoId
+                    assert (todo.assigne == p)
+                    create ContinueWorkingToDo
+                        with 
+                            toDo = this.toDo
+                            startTime = this.startTime
+                            spentTime = this.spentTime
+
+            RejectContinueWorkingTodo : ContractId ToDoItemFinishWorkingProposal
+                with
+                    newComment : Text
+                do
+                    create ToDoItemFinishWorkingProposal
+                        with 
+                            toDo = this.toDo
+                            startTime = this.startTime
+                            finishTime = this.finishTime
+                            spentTime = this.spentTime 
+                            comment = newComment
+
+template ContinueWorkingToDo
+    with 
+        toDo : ToDoItem
+        startTime : Time
+        spentTime : RelTime
+    where 
+        signatory toDo.assignee 
+
+        controller toDo.assignee can  
+            FinishWorkingProposal : ContractId ToDoItemFinishWorkingProposal
+                with 
+                    newComment : Text
+                do
+                    now <- getTime
+                    create ToDoItemFinishWorkingProposal
+                        with
+                            toDo = this.toDo
+                            startTime = this.startTime
+                            finishTime = now
+                            spentTime = subTime now startTime
+                            comment = newComment
+
+toDoItem_test = scenario do
+    alice <- getParty "Alice"
+    bob <- getParty "Bob"
+    --mark <- getParty "Mark"
+
+    -- "toDoItemProposal" is like a pointer in c of type ContractId - Position in a ledger 
+    -- key value store 
+
+    toDoItemProposal <- submit alice do
+        create ToDoItemProposal with
+            toDo = ToDoItem with
+                issuer = alice
+                assignee = bob
+                toDoDescription = "This is a todo"
+
+    toDoItem <- submit bob do
+        exercise toDoItemProposal AcceptToDo
+
+    startWorkingItem <- submit bob do
+        exercise toDoItem StartWorkingOnAToDo 
+
+    pass (days 1)
+
+    finishWorkingProposal <- submit bob do  
+        exercise startWorkingItem FinishWorking with newComment = "The work is done"
+    
+    pass (minutes 10)
+
+    rejectedFinishWorkingProposal <- submit alice do
+        exercise finishWorkingProposal RejectToDoDone with newComment = "Not good enough"
+
+    pass (minutes 60)
+
+    continueWorkingToDo <- submit bob do
+        exercise rejectedFinishWorkingProposal AcceptContinueWorkingToDo
+    
+    pass (days 1)
+
+    newFinishWorkingProposal <- submit bob do
+        exercise continueWorkingToDo FinishWorkingProposal with newComment = "Added some more extra work"
+
+    pass (minutes 30)
+
+    finishedToDoItem <- submit alice do
+        exercise newFinishWorkingProposal AcceptToDoDone
+    
+    submit alice do
+        archive finishedToDoItem
+    
+    {-
+    toDoItemProposalAccepted : ContractId ToDoItem <- submit bob do
+        -- ContractId is the key and fetch "fetches" the values associated with the ContractId
+        toDoItemProposalData <- fetch toDoItemProposal
+        exercise toDoItemProposal AcceptTask 
+            --with
+                --newAssignee = toDoItemProposalData.toDo.issuer
+    -}
+
+toDoItem_test2 = scenario do
+    alice <- getParty "Alice"
+    bob <- getParty "Bob"
+    --mark <- getParty "Mark"
+
+    -- "toDoItemProposal" is like a pointer in c of type ContractId - Position in a ledger 
+    -- key value store 
+
+    toDoItemProposal <- submit alice do
+        create ToDoItemProposal with
+            toDo = ToDoItem with
+                issuer = alice
+                assignee = bob
+                toDoDescription = "This is a todo"
+
+    toDoItem <- submit bob do
+        exercise toDoItemProposal AcceptToDo
+
+    startWorkingItem <- submit bob do
+        exercise toDoItem StartWorkingOnAToDo 
+
+    pass (days 1)
+
+    finishWorkingProposal <- submit bob do  
+        exercise startWorkingItem FinishWorking with newComment = "The work is done"
+    
+    pass (minutes 10)
+
+    rejectedFinishWorkingProposal <- submit alice do
+        exercise finishWorkingProposal RejectToDoDone with newComment = "Not good enough"
+
+    pass (minutes 60)
+
+    continueWorkingToDo <- submit bob do
+        exercise rejectedFinishWorkingProposal AcceptContinueWorkingToDo
+    
+    pass (days 1)
+
+    newFinishWorkingProposal <- submit bob do
+        exercise continueWorkingToDo FinishWorkingProposal with newComment = "Added some more extra work"
+
+    pass (minutes 30)
+
+    finishTimeProposalRejectedTwice <- submit alice do
+        exercise newFinishWorkingProposal RejectToDoDone with newComment = "Still not good enough"
+
+    pass (minutes 40)
+
+    notAcceptedAgain <- submit bob do
+        exercise finishTimeProposalRejectedTwice RejectContinueWorkingTodo with newComment = "This is good enough. Not agreed to do this and that"
+
+    workDone <- submit alice do
+        exercise notAcceptedAgain AcceptToDoDone 
+
+    submit alice do
+        archive workDone 
+
+toDoItem_test3 = scenario do
+    alice <- getParty "Alice"
+    bob <- getParty "Bob"
+
+    bobsContract <- submit alice do
+        now <- getTime
+        let spentTimeExample = subTime now now
+        create ToDoItemContinueWorkingProposal with
+            toDo = ToDoItem with
+                issuer = alice
+                assignee = bob
+                toDoDescription = "This is a todo"
+            startTime = now
+            finishTime = now
+            spentTime = spentTimeExample
+            comment = "Fake work is being accepted"
+
+    submit bob do
+        exercise bobsContract AcceptContinueWorkingToDo
