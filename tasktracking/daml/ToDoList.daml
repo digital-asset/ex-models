@@ -55,24 +55,10 @@ template ToDoItemProposal
 
 template ToDoItemStartWorking
     with 
-        toDo : ContractId ToDoItem
+        toDo : ToDoItem
         startTime : Time
-        issuer : Party
-        assignee : Party
     where 
-        signatory issuer, assignee
-
-        choice FinishToDoProposal : ContractId ToDoItemFinishWorkingProposal
-            with a : Party, i : Party
-            controller p 
-                do 
-                    todo <- fetch toDoId
-                    assert (todo.assigne == a) && (todo.issuer == b)
-                    create ToDoItemFinishWorkingProposal
-                        with 
-                            toDo = this.toDo
-                            startTime = this.startTime
-                            spentTime = this.spentTime
+        signatory toDo.issuer, toDo.assignee
 
         controller toDo.assignee can
             FinishWorking : ContractId ToDoItemFinishWorkingProposal
@@ -90,7 +76,7 @@ template ToDoItemStartWorking
 
 template ToDoItemFinishWorking
     with 
-        toDo :  ContractId ToDoItem
+        toDo :  ToDoItem
         startTime : Time
         finishTime : Time
         spentTime : RelTime
@@ -99,7 +85,7 @@ template ToDoItemFinishWorking
 
 template ToDoItemFinishWorkingProposal
     with 
-        toDo : ContractId ToDoItem
+        toDo : ToDoItem
         startTime : Time
         finishTime : Time
         spentTime : RelTime
@@ -131,21 +117,17 @@ template ToDoItemFinishWorkingProposal
 
 template ToDoItemContinueWorkingProposal
     with
-        toDo : ContractId ToDoItem
+        toDo : ToDoItem
         startTime : Time
         finishTime :  Time
         spentTime : RelTime
         comment : Text
-        issuer: Party
     where  
-        signatory issuer
+        signatory toDo.issuer
 
-        choice Accept : ContractId ContinueWorkingToDo
-          with p : Party
-          controller p
-          do
-                    todo <- fetch toDoId
-                    assert (todo.assigne == p)
+        controller toDo.assignee can
+            AcceptContinueWorkingToDo : ContractId ContinueWorkingToDo
+                do
                     create ContinueWorkingToDo
                         with 
                             toDo = this.toDo
@@ -320,3 +302,24 @@ toDoItem_test3 = scenario do
 
     submit bob do
         exercise bobsContract AcceptContinueWorkingToDo
+
+toDoItem_test4 = scenario do
+    alice <- getParty "Alice"
+    bob <- getParty "Bob"
+    --mark <- getParty "Mark"
+
+    -- "toDoItemProposal" is like a pointer in c of type ContractId - Position in a ledger 
+    -- key value store 
+
+    toDoItemProposal <- submit alice do
+        create ToDoItemProposal with
+            toDo = ToDoItem with
+                issuer = alice
+                assignee = bob
+                toDoDescription = "This is a todo"
+
+    toDoItem <- submit bob do
+        exercise toDoItemProposal AcceptToDo
+    
+    submit bob do
+        exercise toDoItem StartWorkingOnAToDo 
