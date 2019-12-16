@@ -1,0 +1,103 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Shop where
+
+import DA.Assert
+import Asset
+
+type ShopId = ContractId Shop
+type OfferId = ContractId Offer
+type VendorInviteId = ContractId VendorInvite
+type VendorRelationshipId = ContractId VendorRelationship
+type UserInviteId = ContractId UserInvite
+type UserRelationshipId = ContractId UserRelationship
+
+template Shop
+  with
+    owner : Party
+    vendors : [Party]
+    users : [Party]
+    offerIds : [OfferId]
+  where
+    signatory owner
+    observer users, vendors
+    controller owner can
+      InviteVendor : (ShopId, VendorInviteId)
+        with vendor : Party
+        do
+          shopId <- create this with vendors = vendor :: vendors
+          invite <- create VendorInvite with ..
+          pure (shopId, invite)
+      InviteUser : (ShopId, UserInviteId)
+        with user : Party
+        do
+          shopId <- create this with users = user :: users
+          inviteId <- create UserInvite with ..
+          pure (shopId, inviteId)
+
+template VendorInvite
+  with
+    owner : Party
+    vendor : Party
+  where
+    signatory owner
+    controller vendor can
+      AcceptVendorInvite : VendorRelationshipId
+        do create VendorRelationship with ..
+
+template VendorRelationship
+  with
+    owner : Party
+    vendor : Party
+  where
+    signatory owner, vendor
+    controller vendor can
+      nonconsuming OfferItem : (ShopId, OfferId)
+        with
+          shopId : ShopId
+          itemId : ItemId
+          price : Decimal
+          currency : Text
+        do
+          shop <- fetch shopId
+          disclosedItemId <- exercise itemId Disclose with users = owner :: shop.users
+          offerId <- create Offer with itemId = disclosedItemId; users = shop.users; ..
+          shopId <- create shop with offerIds = offerId :: shop.offerIds
+          pure (shopId, offerId)
+          
+template UserInvite
+  with
+    owner : Party
+    user : Party
+  where
+    signatory owner
+    controller user can
+      AcceptUserInvite : UserRelationshipId
+        do create UserRelationship with ..
+
+template UserRelationship
+  with
+    owner : Party
+    user : Party
+  where
+    signatory owner, user
+    controller user can
+      nonconsuming BuyItem : (ShopId, ItemId, IouId)
+        with
+          shopId : ShopId
+          offerId : OfferId
+          iouId : IouId
+        do
+          shop <- fetch shopId
+          offer <- fetch offerId
+          iou <- fetch iouId
+          offer.price === iou.amount
+          offer.currency === iou.currency
+          assert $ any (== offerId) shop.offerIds
+
+          newShopId <- create shop with offerIds = filter (/= offerId) shop.offerIds
+          newItemId <- exercise offerId Settle with buyer = user
+          newIouId <- exercise iouId TransferIou with newOwner = offer.vendor
+          pure (newShopId, newItemId, newIouId)
