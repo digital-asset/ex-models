@@ -1,0 +1,116 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Base.HolidayCalendar where
+
+import DA.Date as D
+import DA.List
+
+-- | Holiday Calendar Data used to define holidays.
+data HolidayCalendarData = HolidayCalendarData
+  with
+    id : Text
+      -- ^ The id of the holiday calendar.
+    weekend : [DayOfWeek]
+      -- ^ A list of week days defining the weekend.
+    holidays : [Date]
+      -- ^ A list of dates defining holidays.
+  deriving (Eq, Show)
+
+-- | Merge multiple holiday calendars into a single one. `id`s are concatenated by `,`.
+merge : [HolidayCalendarData] -> HolidayCalendarData
+merge [] = HolidayCalendarData with id = "Empty", holidays = [], weekend = []
+merge cals = foldl1
+              (\cal1 cal2 -> 
+                HolidayCalendarData
+                  { id = cal1.id <> "," <> cal2.id
+                  , weekend = dedup $ cal1.weekend ++ cal2.weekend
+                  , holidays = dedup $ cal1.holidays ++ cal2.holidays
+                  }
+              )
+              cals
+
+-- | An enum type to specify how a non-business day is adjusted.
+data BusinessDayConventionEnum
+  = FOLLOWING
+  -- ^ Adjust a non-business day to the next business day.
+  | MODFOLLOWING
+  -- ^ Adjust a non-business day to the next business day
+  -- unless it is not in the same month. In this case use
+  -- the previous business day.
+  | MODPRECEDING
+  -- ^ Adjust a non-business day to the previous business day
+  -- unless it is not in the same month. In this case use
+  -- the next business day.
+  | NONE
+  -- ^ Non-business days are not adjusted.
+  | PRECEDING
+  -- ^ Adjust a non-business day to the previous business day.
+  deriving (Eq, Show)
+
+-- | A data type to define how non-business days are adjusted.
+data BusinessDayAdjustment = BusinessDayAdjustment
+  with
+    calendarIds : [Text]
+      -- ^ A list of calendar ids to define holidays.
+    convention : BusinessDayConventionEnum
+      -- ^ The business day convention used for the adjustment.
+  deriving (Eq, Show)
+
+-- | Check if Date is a holiday
+isHoliday : HolidayCalendarData -> Date -> Bool
+isHoliday cal date = date `elem` cal.holidays || (dayOfWeek date) `elem` cal.weekend
+
+-- | Check if Date is a business day
+isBusinessDay : HolidayCalendarData -> Date -> Bool
+isBusinessDay cal date = not $ isHoliday cal date
+
+-- | Get next business day
+nextBusinessDay : HolidayCalendarData -> Date -> Date
+nextBusinessDay cal date = if isHoliday cal next then nextBusinessDay cal next else next
+  where next = addDays date 1
+
+-- | Get previous business day
+previousBusinessDay : HolidayCalendarData -> Date -> Date
+previousBusinessDay cal date = if isHoliday cal previous then previousBusinessDay cal previous else previous
+  where previous = addDays date (-1)
+
+-- | Get next or same business day
+nextOrSameBusinessDay : HolidayCalendarData -> Date -> Date
+nextOrSameBusinessDay cal date = if isHoliday cal date then nextBusinessDay cal date else date
+
+-- | Get previous or same business day
+previousOrSameBusinessDay : HolidayCalendarData -> Date -> Date
+previousOrSameBusinessDay cal date = if isHoliday cal date then previousBusinessDay cal date else date
+
+-- | Get next or same business day if before end of month. Otherwise get last business day in month.
+nextSameOrLastInMonthBusinessDay : HolidayCalendarData -> Date -> Date
+nextSameOrLastInMonthBusinessDay cal date = if month nextOrSame /= month date then previousBusinessDay cal date else nextOrSame
+  where
+    nextOrSame = nextOrSameBusinessDay cal date
+    month date = let (_, m, _) = toGregorian date in m
+
+-- | Get previous or same business day if before end of month. Otherwise get first business day in month.
+previousSameOrFirstInMonthBusinessDay : HolidayCalendarData -> Date -> Date
+previousSameOrFirstInMonthBusinessDay cal date = if month previousOrSame /= month date then nextBusinessDay cal date else previousOrSame
+  where
+    previousOrSame = previousOrSameBusinessDay cal date
+    month date = let (_, m, _) = toGregorian date in m
+
+-- | Add business days to a Date
+addBusinessDays : HolidayCalendarData -> Int -> Date -> Date
+addBusinessDays cal n date
+ | n == 0 = date
+ | n < 0 = addBusinessDays cal (n + 1) $ previousBusinessDay cal date
+ | otherwise = addBusinessDays cal (n - 1) $ nextBusinessDay cal date
+
+-- | Adjust date according to the given business day convention
+adjustDate : HolidayCalendarData -> BusinessDayConventionEnum -> Date -> Date
+adjustDate cal convention date =
+  case convention of
+    FOLLOWING -> nextOrSameBusinessDay cal date
+    MODFOLLOWING -> nextSameOrLastInMonthBusinessDay cal date
+    PRECEDING -> previousOrSameBusinessDay cal date
+    MODPRECEDING -> previousSameOrFirstInMonthBusinessDay cal date
+    NONE -> date

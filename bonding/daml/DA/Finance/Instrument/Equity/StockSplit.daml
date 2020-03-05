@@ -1,0 +1,34 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Instrument.Equity.StockSplit where
+
+import DA.Next.Set
+
+import DA.Finance.Types
+
+-- | Reference data describing an equity stock split.
+template EquityStockSplit
+  with
+    id : Id
+      -- ^ The asset id to which the stock split applies. Depending on the trust model
+      -- the signatories might be the issuer or a third party reference data provider
+      -- such as Reuters.
+    exDate : Date
+      -- ^ The date on or after which the security is traded with the split applied.
+    rFactor : Decimal
+      -- ^ The factor through which the quantity has to be divided to obtain the new quantity.
+    observers : Set Party
+  where
+    signatory id.signatories
+    observer observers
+    ensure rFactor > 0.0
+
+    key id : Id
+    maintainer key.signatories
+
+    controller id.signatories can
+      EquityStockSplit_SetObservers : ContractId EquityStockSplit
+        with newObservers : Set Party
+        do create this with observers = newObservers

@@ -1,0 +1,124 @@
+daml 1.2
+module DA.Finance.Instrument.ACBRC where
+
+-- import DA.Assert
+-- import DA.List
+-- import DA.Next.Set
+-- import DA.Finance.Asset.Lifecycle
+-- import DA.Finance.Types
+-- import DA.Finance.Utils
+
+-- data OptionType = Put | Call deriving (Eq, Show)
+
+-- template ACBRC
+--   with
+--     id : Id
+--     underlying : Id
+--     currency : Id
+--     barrier : Decimal
+--     barrierIsHit : Bool
+--     fixingDates : [Date]
+--     fixingIdx : Int
+--     coupon : Decimal
+--     initialFixing : Decimal
+--     observers : [Party]
+--   where
+--     signatory id.signatories
+--     observer observers
+    
+--     key id : Id
+--     maintainer key.signatories
+
+-- template ACBRCLifecycleStockSplit
+--   with
+--     id : Id
+--       -- ^ The asset id to which the stock split applies. Depending on the trust model
+--       -- the signatories might be the issuer or a third party reference data provider
+--       -- such as Reuters.
+--     exDate : Date
+--       -- ^ The date on or after which the security is traded with the split applied.
+--     rFactor : Decimal
+--       -- ^ The factor through which the quantity has to be devided to obtain the new quantity.
+--     observers : Set Party
+--   where
+--     signatory id.signatories
+--     observer observers
+--     ensure rFactor > 0.0
+
+--     key id : Id
+--     maintainer key.signatories
+
+--     controller id.signatories can
+--       nonconsuming ACBRCLifecycleStockSplit_Process : ContractId LifecycleEffects
+--         -- ^ Allows the id.signatories to create lifecycle effects.
+--         with
+--           acbrcId : Id
+--         do
+--           assertOnOrAfterDateMsg "expects exDate <= now" $ exDate
+--           (_, acbrc) <- fetchAndArchiveByKey @ACBRC acbrcId
+--           acbrc.underlying === id
+
+--           let newId = acbrcId with version = acbrcId.version + 1
+--           create acbrc with
+--             id = newId
+--             initialFixing = acbrc.initialFixing / rFactor
+
+--           create LifecycleEffects with
+--             id
+--             consuming = []
+--             effects = [ Asset with id = newId; quantity = 1.0 ]
+--             observers
+
+-- template ACBRCLifecycleFixing
+--   with
+--     id : Id
+--       -- ^ The asset id to which the fixing applies.
+--     date : Date
+--     fixing : Decimal
+--     observers : Set Party
+--   where
+--     signatory id.signatories
+--     observer observers
+
+--     key id : Id
+--     maintainer key.signatories
+
+--     controller id.signatories can
+--       nonconsuming ACBRCLifecycleFixing_Process : ContractId LifecycleEffects
+--         -- ^ Allows the id.signatories to create lifecycle effects.
+--         with
+--           acbrcId : Id
+--         do
+--           (_, acbrc) <- fetchAndArchiveByKey @ACBRC acbrcId
+--           assertOnOrAfterDateMsg "expects date <= now" $ date
+--           assertMsg "product already expired" $ acbrc.fixingIdx < length acbrc.fixingDates
+--           assertMsg "underlyings don't match" $ acbrc.underlying == id
+--           assertMsg "fixing has wrong date" $ acbrc.fixingDates!!acbrc.fixingIdx == date
+--           let performance = fixing / acbrc.initialFixing
+--           let barrierIsHit = acbrc.barrierIsHit || performance <= acbrc.barrier
+
+--           let isRedemption = acbrc.fixingIdx == length acbrc.fixingDates - 1
+--           let redemption = if barrierIsHit then min performance 1.0 else 1.0
+          
+--           let isEarlyRedemption = not isRedemption && performance > 1.0
+--           let earlyRedemption = 1.0
+          
+--           let newId = acbrcId with version = acbrcId.version + 1
+--           create acbrc with
+--             id = newId
+--             barrierIsHit
+--             fixingDates = if isEarlyRedemption then take (acbrc.fixingIdx + 1) acbrc.fixingDates else acbrc.fixingDates
+--             fixingIdx = acbrc.fixingIdx + 1
+
+--           let paymentAmount =
+--                 acbrc.coupon
+--                 + (if isEarlyRedemption then earlyRedemption else 0.0)
+--                 + (if isRedemption then redemption else 0.0)
+
+--           create LifecycleEffects with
+--             id
+--             consuming = []
+--             effects =
+--               [ Asset with id = newId, quantity = 1.0
+--               , Asset with id = acbrc.currency, quantity = paymentAmount ]
+--             observers

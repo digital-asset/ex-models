@@ -1,0 +1,147 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Instrument.Equity.Option.Lifecycle where
+
+import DA.Action
+import DA.Assert
+import DA.Next.Set
+import DA.Optional.Total
+
+import DA.Finance.Asset.Lifecycle
+import DA.Finance.Instrument.Entitlement
+import DA.Finance.Instrument.Equity.Option
+import DA.Finance.Instrument.Equity.Stock
+import DA.Finance.Instrument.Equity.StockSplit
+import DA.Finance.Types
+import DA.Finance.Utils
+
+-- | The outputs of the EquityOptionExercise_Lifecycle choice.
+data EquityOptionExercise_Result = EquityOptionExercise_Result
+  with
+    entitlementCid : ContractId Entitlement
+      -- ^ Entitlement instrument describing the option exercise.
+    lifecycleEffectsCid : ContractId LifecycleEffects
+      -- ^ Lifecycle effects describing the archival of the option
+      -- and the creation of an exercise entitlement.
+  deriving (Eq, Show)
+
+-- | Rule that helps with processing an option exercise.
+-- 
+-- For EUROPEAN options, exercise lifecycle effects are supposed
+-- to be created once at maturity. Option holder can use it to
+-- exercise their option positions at maturity.
+--
+-- For AMERICAN options, exercise lifecycle effects are supposed
+-- to be created according to the exercise schedule.
+
+template EquityOptionExerciseRule
+  with
+    signatories : Set Party
+      -- ^ Publishers of the option reference data.
+  where
+    signatory signatories
+
+    key signatories : Set Party
+    maintainer key
+
+    controller signatories can
+      nonconsuming EquityOptionExercise_Lifecycle: EquityOptionExercise_Result
+         -- ^ Allows the signatories to create exercise
+         -- details for an option.
+        with
+          optionCid : ContractId EquityOption
+            -- ^ Option reference data.
+          underlyingPrice : Optional Decimal
+            -- ^ Price of the underlying in case of CASH settlement.
+          entitlementIdLabel : Text
+            -- ^ A label for the entitlement instrument describing the exercise.
+          settlementDate : Date
+            -- ^ The settlement date of the exercise.
+        do
+          option@EquityOption{..} <- fetch optionCid
+          (_, stock) <- fetchByKey @EquityStock option.underlyingId
+          when (exerciseType == EUROPEAN) do
+            assertOnOrAfterDateMsg "European option cannot be exercised before maturity" maturity
+
+          let entitlementId = Id with signatories = id.signatories, label = entitlementIdLabel, version = 0
+          entitlementCid <-
+            case settlementType of
+              PHYSICAL -> do
+                let stockAsset = Asset with id = underlyingId, quantity = contractSize
+                let cashAsset = Asset with id = stock.ccy, quantity = contractSize * strike
+                let (underlying, payment) =
+                     case optionType of
+                      CALL -> (stockAsset, Some cashAsset)
+                      PUT -> (cashAsset, Some stockAsset)
+                create Entitlement with id = entitlementId, ..
+                
+              CASH -> do
+                underlyingPrice <- fromSomeNote "underlying price required for CASH settlement" underlyingPrice
+                let quantity =
+                       case optionType of
+                        CALL -> contractSize * (underlyingPrice - strike)
+                        PUT -> contractSize * (strike - underlyingPrice)
+                let underlying = Asset with id = stock.ccy, quantity
+                let payment = None
+                create Entitlement with id = entitlementId, ..
+
+          lifecycleEffectsCid <- create LifecycleEffects with
+                                  id
+                                  consuming = []
+                                  effects = [Asset with id = entitlementId, quantity = 1.0]
+                                  observers
+
+          return EquityOptionExercise_Result with ..
+
+-- | The outputs of the EquityOptionStockSplit_Lifecycle choice.
+data EquityOptionStockSplit_Result = EquityOptionStockSplit_Result
+  with
+    optionCid : ContractId EquityOption
+       -- ^ The option after applying the stock split.
+    lifecycleEffectsCid : ContractId LifecycleEffects
+      -- ^ Lifecycle effects describing the increase of the asset's version
+      -- number.
+
+-- | Rule that helps with processing stock splits for equity options.
+template EquityOptionStockSplitRule
+  with
+    signatories : Set Party
+      -- ^ Publishers of the option reference data.
+  where
+    signatory signatories
+
+    key signatories : Set Party
+    maintainer key
+
+    controller signatories can
+      nonconsuming EquityOptionStockSplit_Lifecycle : EquityOptionStockSplit_Result
+        -- ^ Allows the signatories to process stock split reference data
+        -- for a corresponding equity option.
+        with
+          optionCid : ContractId EquityOption
+            -- ^ The option to be lifecycled.
+          stockSplitCid : ContractId EquityStockSplit
+            -- ^ Stock split reference data.
+        do
+          option <- fetch optionCid
+          stockSplit <- fetch stockSplitCid
+
+          option.underlyingId === stockSplit.id
+          assertOnOrAfterDateMsg "expects exDate <= now" $ stockSplit.exDate
+
+          let optionIdNew =  increaseVersion option.id
+          optionCid <- create option with
+                        id = optionIdNew
+                        contractSize = option.contractSize / stockSplit.rFactor
+                        strike = option.strike * stockSplit.rFactor
+                        underlyingId = increaseVersion option.underlyingId
+
+          lifecycleEffectsCid <- create LifecycleEffects with
+                                    id = option.id
+                                    consuming = []
+                                    effects = [Asset with id = optionIdNew, quantity = 1.0]
+                                    observers = option.observers
+
+          return EquityOptionStockSplit_Result with optionCid, lifecycleEffectsCid

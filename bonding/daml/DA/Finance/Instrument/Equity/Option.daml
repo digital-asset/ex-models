@@ -1,0 +1,48 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Instrument.Equity.Option where
+
+import DA.Next.Set
+
+import DA.Finance.Types
+
+data OptionType = PUT | CALL deriving (Eq, Show)
+data ExerciseType = EUROPEAN | AMERICAN deriving (Eq, Show)
+data SettlementType = CASH | PHYSICAL deriving (Eq, Show)
+
+-- | Reference data describing an equity option.
+template EquityOption
+  with
+    id : Id
+      -- ^ The option asset id. Depending on the trust model the signatories
+      -- might be the issuer or a third party reference data provider
+      -- such as Reuters.
+    underlyingId : Id
+      -- ^ The id of the underlying.
+    optionType : OptionType
+      -- ^ The type of the option (PUT or CALL).
+    exerciseType : ExerciseType
+      -- ^ The type of the exercise style (EUROPEAN or AMERICAN).
+    strike : Decimal
+      -- ^ The strike of the option.
+    contractSize : Decimal
+      -- ^ The contract size (i.e. multiplier) of the option.
+    maturity : Date
+      -- ^ The maturity of the option.
+    settlementType : SettlementType
+      -- ^ The settlement type of the option (CASH or PHYSICAL).
+    observers : Set Party
+  where
+    signatory id.signatories
+    observer observers
+    ensure strike > 0.0 && contractSize > 0.0
+
+    key id : Id
+    maintainer key.signatories
+
+    controller id.signatories can
+      EquityOption_SetObservers : ContractId EquityOption
+        with newObservers : Set Party
+        do create this with observers = newObservers

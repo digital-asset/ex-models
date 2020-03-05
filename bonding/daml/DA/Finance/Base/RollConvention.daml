@@ -1,0 +1,106 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Base.RollConvention
+  ( Period(..)
+  , PeriodEnum(..)
+  , RollConventionEnum(..)
+  , next
+  , previous
+  , addPeriod
+  )
+  where
+
+import DA.Date as D
+
+-- | A data type to define periods.
+data Period = Period
+  with
+    period : PeriodEnum
+      -- ^ A period, e.g. a day, week, month or year.
+    periodMultiplier : Int
+      -- ^ A period multiplier, e.g. 1, 2 or 3 etc.
+  deriving (Eq, Show)
+
+-- | An enum type to specify a period, e.g. day, week.
+data PeriodEnum
+  = D
+  -- ^ Day
+  | M
+  -- ^ Month
+  | W
+  -- ^ Week
+  | Y
+  -- ^ Year
+  deriving (Eq, Show)
+
+-- | An enum type to specify how to roll dates. 
+data RollConventionEnum
+  = EOM
+  -- ^ Rolls on month end.
+  | DOM Int
+  -- ^ Rolls on the corresponding day of the month.
+  deriving (Eq, Show)
+
+-- | Get next periodic (daily `D` and weekly `W` not supported) date according
+-- to a given roll convention.
+next : Date -> Period -> RollConventionEnum -> Date
+next _ period _ | period.period == D = error "daily periodic dates not supported." 
+next _ period _ | period.period == W = error "weekly periodic dates not supported." 
+
+next date period EOM
+  | d /= monthDayCount y m = error $ "day " <> show d <> " does not match roll convention EOM."
+  | otherwise =
+      let (yEnd, mEnd, dEnd) = toGregorian $ addPeriod date period
+      in D.date yEnd mEnd (monthDayCount yEnd mEnd)
+  where
+    (y, m, d) = toGregorian date
+
+next date period (DOM rollDay)
+  | d /= rollDay && (m /= Feb || d /= monthDayCount y m || d > rollDay) = error $ "day " <> show d <> " does not match roll convention DOM " <> show rollDay
+  | otherwise =
+      let (yEnd, mEnd, dEnd) = toGregorian $ addPeriod date period
+      in if mEnd == Feb && rollDay >= 29
+         then D.date yEnd mEnd (monthDayCount yEnd mEnd)
+         else D.date yEnd mEnd rollDay
+  where
+    (y, m, d) = toGregorian date
+
+-- | Get previous periodic (daily `D` and weekly `W` not supported) date according
+-- to a given roll convention.
+previous : Date -> Period ->  RollConventionEnum ->Date
+previous date Period{..} rc =
+  let periodRev = Period with periodMultiplier = -periodMultiplier, period
+  in next date periodRev rc
+
+-- | Add period to given date.
+addPeriod : Date -> Period -> Date
+addPeriod date Period{periodMultiplier, period = D} = addDays date periodMultiplier
+addPeriod date Period{periodMultiplier, period = M} = addMonths date periodMultiplier
+addPeriod date Period{periodMultiplier, period = W} = addDays date (7 * periodMultiplier)
+addPeriod date Period{periodMultiplier, period = Y} = addYears date periodMultiplier
+
+-- | HIDE
+-- Add number of months to Date (clip days if invalid)
+addMonths : Date -> Int -> Date
+addMonths date n = D.date y' m' d'
+  where
+    (y, m, d) = toGregorian date
+    (y', m') = rolloverMonths (y, fromEnum m + 1 + n)
+    d' = clip 1 (monthDayCount y' m') d
+
+    rolloverMonths : (Int, Int) -> (Int, Month)
+    rolloverMonths (y, m) = (y + div (m - 1) 12, toEnum $ mod (m - 1) 12)
+      where
+        div x y = floor $ (intToDecimal x) / (intToDecimal y)
+        mod x y = x - (div x y) * y
+
+    clip : Int -> Int -> Int -> Int
+    clip a _ x | x < a = a
+    clip _ b x | x > b = b
+    clip _ _ x = x
+
+-- | HIDE
+addYears : Date -> Int -> Date
+addYears date n = addMonths date (n * 12)

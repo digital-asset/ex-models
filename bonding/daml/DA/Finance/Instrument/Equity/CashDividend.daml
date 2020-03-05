@@ -1,0 +1,36 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Instrument.Equity.CashDividend where
+
+import DA.Next.Set
+
+import DA.Finance.Types
+
+-- | Reference data describing an equity cash dividend.
+template EquityCashDividend
+  with
+    id : Id
+      -- ^ The stock asset id to which the dividend applies. Depending on the trust model
+      -- the signatories might be the issuer or a third party reference data provider
+      -- such as Reuters.
+    exDate : Date
+      -- ^ The date on or after which a security is traded without the dividend.
+    settlementDate : Date
+      -- ^ The date on which the dividend gets paid.
+    perShare : Decimal
+      -- ^ The amount of the distributed assets per unit of equity.
+    observers : Set Party
+  where
+    signatory id.signatories
+    observer observers
+    ensure exDate <= settlementDate && perShare > 0.0
+
+    key id : Id
+    maintainer key.signatories
+
+    controller id.signatories can
+      EquityCashDividend_SetObservers : ContractId EquityCashDividend
+        with newObservers : Set Party
+        do create this with observers = newObservers

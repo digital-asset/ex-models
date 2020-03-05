@@ -1,0 +1,75 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Utils where
+
+import DA.Date
+import DA.List as List
+import DA.Next.Map
+import DA.Next.Set as Set
+import DA.Text as Text
+
+import DA.Finance.Types
+
+instance Semigroup Decimal where
+  (<>) = (+)
+
+instance Monoid Decimal where
+  mempty = 0.0
+
+instance MapKey a => MapKey (Set a) where
+  keyToText s = "Set(" <> Text.intercalate ";" (map keyToText $ Set.toList s) <> ")"
+  keyFromText = Set.fromList . map keyFromText . splitOn ";" . Text.dropPrefix "Set(" . Text.dropSuffix ")"
+
+instance MapKey Id where
+  keyToText Id{..} = keyToText signatories <> "-" <> label <> "-" <> keyToText version
+  keyFromText text =
+    let [signatoriesText, label, versionText] = splitOn "-" text
+        signatories = keyFromText signatoriesText
+        version = keyFromText versionText
+    in Id with ..
+
+instance (MapKey a, MapKey b) => MapKey (a, b) where
+  keyToText (x, y) = "Tuple(" <> keyToText x <> "," <> keyToText y <> ")"
+  keyFromText = (\[x, y] -> (keyFromText x, keyFromText y)) . splitOn "," . Text.dropPrefix "Tuple(" . Text.dropSuffix ")"
+
+-- | Fetches a contract, archives it and returns its value.
+fetchAndArchive : Template a => ContractId a -> Update a
+fetchAndArchive cid = do
+  c <- fetch cid
+  archive cid
+  return c
+
+-- | Checks that the ledger time is on or after the provided date.
+assertOnOrAfterDateMsg : (CanAbort m, HasTime m) => Text -> Date -> m ()
+assertOnOrAfterDateMsg msg date = do
+  now <- getTime
+  assertMsg msg $ date <= toDateUTC now
+
+-- | Checks that the ledger time is on or after the provided date.
+assertOnOrAfterMsg : (CanAbort m, HasTime m) => Text -> Time -> m ()
+assertOnOrAfterMsg msg time = do
+  now <- getTime
+  assertMsg msg $ time <= now
+
+-- | Like zip but fails if the list lengths don't match
+zipChecked : [a] -> [b] -> [(a, b)]
+zipChecked xs ys
+    | List.length xs /= List.length ys  = error "zipChecked: length mismatch"
+    | otherwise               = zip xs ys
+
+-- | Checks if array is not empty.
+notNull : [a] -> Bool
+notNull xs = not $ List.null xs
+
+-- | Update n-th element in a list
+updateListElement : Int -> (a -> a) -> [a] -> [a]
+updateListElement n f xs = zipWith impl xs [0..(List.length xs - 1)]
+  where
+    impl x i | i == n = f x
+    impl x _ = x
+
+-- | Increase id version.
+increaseVersion : Id -> Id
+increaseVersion id = id with version = id.version + 1

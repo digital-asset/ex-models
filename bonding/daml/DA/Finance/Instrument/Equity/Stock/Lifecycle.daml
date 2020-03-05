@@ -1,0 +1,121 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Instrument.Equity.Stock.Lifecycle where
+
+import DA.Next.Set
+
+import DA.Finance.Asset.Lifecycle
+import DA.Finance.Instrument.Entitlement
+import DA.Finance.Instrument.Equity.CashDividend
+import DA.Finance.Instrument.Equity.Stock
+import DA.Finance.Instrument.Equity.StockSplit
+import DA.Finance.Types
+import DA.Finance.Utils
+
+-- | The outputs of the EquityStockCashDividend_Lifecycle choice.
+data EquityStockCashDividend_Result = EquityStockCashDividend_Result
+  with
+    stockCid : ContractId EquityStock
+      -- ^ The stock ex-dividend with increased version.
+    entitlementCid : ContractId Entitlement
+      -- ^ Entitlement instrument describing the upcoming dividend payment.
+    lifecycleEffectsCid : ContractId LifecycleEffects
+      -- ^ Lifecycle effects describing the increase of the asset's version
+      -- number and the creation of a separate dividend entitlement.
+  deriving (Eq, Show)
+
+-- | Rule that helps with processing equity cash dividends for stocks.
+template EquityStockCashDividendRule
+  with
+    signatories : Set Party
+      -- ^ Publishers of the dividend reference data.
+  where
+    signatory signatories
+
+    key signatories : Set Party
+    maintainer key
+
+    controller signatories can
+      nonconsuming EquityStockCashDividend_Lifecycle : EquityStockCashDividend_Result
+        -- ^ Allows the signatories to process dividend reference data
+        -- for the corresponding stock.
+        with
+          dividendCid : ContractId EquityCashDividend
+            -- ^ Dividend reference data.
+          entitlementIdLabel : Text
+            -- ^ A label for the entitlement instrument describing the dividend payment.
+        do
+          dividend <- fetch dividendCid
+          assertOnOrAfterDateMsg "expects exDate <= now" $ dividend.exDate
+
+          (_, stock) <- fetchByKey @EquityStock dividend.id
+          let stockIdNew = increaseVersion stock.id
+          stockCid <- create stock with id = stockIdNew
+
+          let entitlementId = Id with signatories, label = entitlementIdLabel, version = 0
+          entitlementCid <-
+            create Entitlement with
+              id = entitlementId
+              settlementDate = dividend.settlementDate
+              underlying = Asset with id = stock.ccy, quantity = dividend.perShare
+              payment = None
+              observers = dividend.observers
+
+          lifecycleEffectsCid <-
+            create LifecycleEffects with
+              id = stock.id
+              consuming = []
+              effects =
+                [ Asset with id = stockIdNew, quantity = 1.0
+                , Asset with id = entitlementId, quantity = 1.0
+                ]
+              observers = dividend.observers
+
+          return EquityStockCashDividend_Result with stockCid, entitlementCid, lifecycleEffectsCid
+
+-- | The outputs of the EquityStockSplit_Lifecycle choice.
+data EquityStockSplit_Result = EquityStockSplit_Result
+  with
+    stockCid : ContractId EquityStock
+      -- ^ The stock after applying the stock split with increased version number.
+    lifecycleEffectsCid : ContractId LifecycleEffects
+      -- ^ Lifecycle effects describing the increase of the asset's version
+      -- number.
+  deriving (Eq, Show)
+
+-- | Rule that helps with processing stock splits for stocks.
+template EquityStockSplitRule
+  with
+    signatories : Set Party
+      -- ^ Publishers of the stock split reference data.
+  where
+    signatory signatories
+
+    key signatories : Set Party
+    maintainer key
+
+    controller signatories can
+      nonconsuming EquityStockSplit_Lifecycle : EquityStockSplit_Result
+        -- ^ Allows the signatories to process stock split reference data
+        -- for the corresponding stock.
+        with
+          stockSplitCid : ContractId EquityStockSplit
+            -- ^ Stock split reference data.
+        do
+          stockSplit <- fetch stockSplitCid
+          assertOnOrAfterDateMsg "expects exDate <= now" $ stockSplit.exDate
+
+          (_, stock) <- fetchByKey @EquityStock stockSplit.id
+          let stockIdNew = increaseVersion stock.id
+          stockCid <- create stock with id = stockIdNew
+
+          lifecycleEffectsCid <-
+            create LifecycleEffects with
+              id = stock.id
+              consuming = []
+              effects = [ Asset with id = stockIdNew, quantity = 1.0 / stockSplit.rFactor ]
+              observers = stockSplit.observers
+
+          return EquityStockSplit_Result with stockCid, lifecycleEffectsCid

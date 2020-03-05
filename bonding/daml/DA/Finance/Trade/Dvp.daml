@@ -1,0 +1,57 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Trade.Dvp
+  ( module DA.Finance.Trade.Dvp
+  , module DA.Finance.Trade.Types
+  )
+  where
+
+import DA.Next.Set hiding (null)
+
+import DA.Finance.Trade.Types
+import DA.Finance.Types
+import DA.Finance.Utils
+
+-- | A Delivery vs Payment trade is an obligation to exchange the payment assets against
+-- the delivery assets at the agreed settlement date.
+template Dvp
+  with
+    masterAgreement : MasterAgreement
+      -- ^ A trade is allocated to a master agreement and backed by the
+      -- masterAgreement.id.signatories. Depending on the desired trust model this
+      -- might be both counterparties or a third party agent.
+    tradeId : Id
+      -- ^ The identifier of the trade within the master agreement.
+      -- The tradeId.signatories can be left empty.
+    buyer : Party
+      -- ^ The buyer is the party that sends the payments and receives the deliveries.
+      -- The seller is the other counterparty mentioned in the master agreement.
+    status : SettlementStatus
+      -- ^ The settlement status of the trade.
+    settlementDate : Optional Date
+      -- ^ The settlement date of the trade. None indicates instant settlement.
+    payments : [Asset]
+      -- ^ The assets that need to be paid from the buyer to the seller.
+    deliveries : [Asset]
+      -- ^ The assets that need to be delivered from the seller to the buyer.
+    observers : Set Party
+  where
+    signatory masterAgreement.id.signatories
+    observer insert masterAgreement.party1 $ insert masterAgreement.party2 observers
+    ensure isValidDvp this
+
+    key (masterAgreement.id, tradeId) : (Id, Id)
+    maintainer key._1.signatories
+
+-- | HIDE
+isValidDvp : Dvp -> Bool
+isValidDvp Dvp{..} =
+  (buyer == masterAgreement.party1 || buyer == masterAgreement.party2)
+  && (notNull payments || notNull deliveries)
+  && all (\a -> a.quantity > 0.0) payments
+  && all (\a -> a.quantity > 0.0) deliveries
+  && all (\payment -> payment.id `notElem` (map (.id) deliveries)) payments
+  && all (\delivery -> delivery.id `notElem` (map (.id) payments)) deliveries
+  

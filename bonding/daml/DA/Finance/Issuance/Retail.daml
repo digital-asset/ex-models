@@ -1,0 +1,400 @@
+daml 1.2
+
+module DA.Finance.Issuance.Retail where
+
+import DA.Next.Set
+import DA.Finance.Asset
+import DA.Finance.Asset.Settlement
+import DA.Finance.Types
+import DA.Finance.Trade.Dvp
+import DA.Finance.Trade.Dvp.Settlement
+import DA.Finance.Trade.SettlementInstruction
+
+{-
+
+In this tutorial we model common retail banking scenarios to show how the Finance SDK can be used to implement such use cases. We start with a simple scenario:
+
+Alice deposits cash into her account at the bank
+
+-}
+
+scenario1 = do
+  cb <- getParty "CentralBank"
+  acme <- getParty "AcmeBank"
+  alice <- getParty "Alice"
+  
+  let
+    cbUsdId         = Id with signatories = fromList [ cb ]; label = "USD"; version = 0
+    cbUsdAsset      = Asset with id = cbUsdId; quantity = 1_000.0
+
+    aliceAccountId  = Id with signatories = fromList [ acme ]; label = "Alice@Acme"; version = 0
+    aliceAccount    = Account with id = aliceAccountId; provider = acme; owner = alice
+    aliceDeposit    = AssetDeposit with account = aliceAccount; asset = cbUsdAsset; observers = empty
+
+  aliceDepositCid <- submit acme do create aliceDeposit
+
+  pure ()
+
+{-
+
+Alice transfers money to Bob, who has an account with the same bank
+
+By default, `AssetDeposit`s are not transferrable. This is to allow scenarios where an asset's transferability needs to be restricted, for example if an asset vests over time. So for Alice to be able to transfer money to Bob, she requires an `AssetSettlementRule` contract. She also requires explicit grant from Bob to credit his account, which Bob can provide by adding her to the controllers on _his_ `AssetSettlementRule`.
+
+-}
+
+scenario2 = do
+  cb <- getParty "CentralBank"
+  acme <- getParty "AcmeBank"
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  let
+    cbUsdId         = Id with signatories = fromList [ cb ]; label = "USD"; version = 0
+    cbUsdAsset      = Asset with id = cbUsdId; quantity = 1_000.0
+
+    aliceAccountId  = Id with signatories = fromList [ acme ]; label = "Alice@Acme"; version = 0
+    aliceAccount    = Account with id = aliceAccountId; provider = acme; owner = alice
+    aliceDeposit    = AssetDeposit with account = aliceAccount; asset = cbUsdAsset; observers = empty
+    aliceSettlement = AssetSettlementRule with account = aliceAccount; observers = empty; ctrls = empty
+
+    bobAccountId  = Id with signatories = fromList [ acme ]; label = "Bob@Acme"; version = 0
+    bobAccount    = Account with id = bobAccountId; provider = acme; owner = bob
+    bobSettlement = AssetSettlementRule with account = bobAccount; observers = empty; ctrls = fromList [ alice ]
+
+  aliceSettlementCid  <- submit acme do create aliceSettlement
+  bobSettlementCid    <- submit acme do create bobSettlement
+
+  aliceDepositCid <- submit acme do create aliceDeposit
+
+  bobDepositCid <- submit alice do
+    exercise aliceSettlementCid AssetSettlement_Transfer with
+      receiverAccountId = bobAccountId
+      depositCid = aliceDepositCid
+
+  pure ()
+  
+{-
+
+Now, if Bob would hold his account at a different bank a direct transfer doesn't work anymore as in this case the authorization from Bob's bank to credit his account is missing.
+
+-}
+
+scenario3 = do
+  cb <- getParty "CentralBank"
+  acme <- getParty "AcmeBank"
+  genco <- getParty "GencoBank"
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  let
+    cbUsdId         = Id with signatories = fromList [ cb ]; label = "USD"; version = 0
+    cbUsdAsset      = Asset with id = cbUsdId; quantity = 1_000.0
+
+    aliceAccountId  = Id with signatories = fromList [ acme ]; label = "Alice@Acme"; version = 0
+    aliceAccount    = Account with id = aliceAccountId; provider = acme; owner = alice
+    aliceDeposit    = AssetDeposit with account = aliceAccount; asset = cbUsdAsset; observers = empty
+    aliceSettlement = AssetSettlementRule with account = aliceAccount; observers = empty; ctrls = empty
+
+    bobAccountId  = Id with signatories = fromList [ genco ]; label = "Bob@Genco"; version = 0
+    bobAccount    = Account with id = bobAccountId; provider = genco; owner = bob
+    bobSettlement = AssetSettlementRule with account = bobAccount; observers = empty; ctrls = fromList [ alice ]
+
+  aliceSettlementCid  <- submit acme do create aliceSettlement
+  bobSettlementCid    <- submit genco do create bobSettlement
+
+  aliceDepositCid <- submit acme do create aliceDeposit
+
+  submitMustFail alice do
+    exercise aliceSettlementCid AssetSettlement_Transfer with
+      receiverAccountId = bobAccountId
+      depositCid = aliceDepositCid
+
+{- 
+
+This also intuitively makes sense, as directly transferring Alice's deposit to Bob would create a net new claim against Bob's bank without receiving offsetting funds from Alice's bank. So to model such a cross-entity transfer we have to implement settlement across multiple steps. First, Alice transfers the funds to Bob's bank, which needs to also hold an account with Alice's bank for this case. Then, Bob's bank can credit Bob's account with the same amount, as they now hold offseting funds at Alice's bank and are therefore net flat on the transaction. To do this, Bob's bank first creates an asset deposit for itself, which it then transfers to Bob.
+
+-}
+
+scenario4 = do
+  cb <- getParty "CentralBank"
+  acme <- getParty "AcmeBank"
+  genco <- getParty "GencoBank"
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  let
+    cbUsdId             = Id with signatories = fromList [ cb ]; label = "USD"; version = 0
+    cbUsdAsset          = Asset with id = cbUsdId; quantity = 1_000.0
+
+    aliceAccountId      = Id with signatories = fromList [ acme ]; label = "Alice@Acme"; version = 0
+    aliceAccount        = Account with id = aliceAccountId; provider = acme; owner = alice
+    aliceDeposit        = AssetDeposit with account = aliceAccount; asset = cbUsdAsset; observers = empty
+    aliceSettlement     = AssetSettlementRule with account = aliceAccount; observers = empty; ctrls = empty
+
+    bobAccountId        = Id with signatories = fromList [ genco ]; label = "Bob@Genco"; version = 0
+    bobAccount          = Account with id = bobAccountId; provider = genco; owner = bob
+    bobSettlement       = AssetSettlementRule with account = bobAccount; observers = empty; ctrls = fromList [ genco ]
+
+    gencoAccountId      = Id with signatories = fromList [ acme ]; label = "Genco@Acme"; version = 0
+    gencoAccount        = Account with id = gencoAccountId; provider = acme; owner = genco
+    gencoSettlement     = AssetSettlementRule with account = gencoAccount; observers = empty; ctrls = fromList [ alice ]
+    gencoOwnAccountId   = Id with signatories = fromList [ genco ]; label = "Genco@Genco"; version = 0
+    gencoOwnAccount     = Account with id = gencoOwnAccountId; provider = genco; owner = genco
+    gencoOwnSettlement  = AssetSettlementRule with account = gencoOwnAccount; observers = empty; ctrls = empty
+    gencoDeposit        = AssetDeposit with account = gencoOwnAccount; asset = cbUsdAsset; observers = empty
+
+  aliceSettlementCid    <- submit acme do create aliceSettlement
+  bobSettlementCid      <- submit genco do create bobSettlement
+  gencoSettlementCid    <- submit acme do create gencoSettlement
+  gencoOwnSettlementCid <- submit genco do create gencoOwnSettlement
+
+  aliceDepositCid       <- submit acme do create aliceDeposit
+  gencoOwnDepositCid    <- submit genco do create gencoDeposit
+
+  gencoDepositCid       <- submit alice do
+    exercise aliceSettlementCid AssetSettlement_Transfer with
+      receiverAccountId = gencoAccountId
+      depositCid = aliceDepositCid
+  bobDepositCid         <- submit genco do
+    exercise gencoOwnSettlementCid AssetSettlement_Transfer with
+      receiverAccountId = bobAccountId
+      depositCid = gencoOwnDepositCid
+
+  pure ()
+
+{-
+
+In the above transaction GencoBank ends up with a deposit at AcmeBank to offset the funds that it credited to Bob. In reality, GencoBank might not want to accept such an offsetting deposit, as it exposes them to credit risk against AcmeBank. Effectively, deposits of the same asset in different banks are not truly fungible due to the different credit risk associated with each bank. How this trust issue is resolved in the real world is that a central bank functions as a trusted intermediary in the market. So instead of Alice transferring her funds directly to Bob's bank, she first transfers it to her bank. AcmeBank then transfers a corresponding central bank deposit to GencoBank, which also holds an account with the central bank. Finally, GencoBank credits Bob with the same amount in his account with the bank. The difference to the previous transaction now is that the offseting deposit of GencoBank is held at the central bank instead of AcmeBank, which removes the trust and credit risk issue between the two banks.
+
+-}
+
+scneario5 = do
+  cb <- getParty "CentralBank"
+  acme <- getParty "AcmeBank"
+  genco <- getParty "GencoBank"
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  let
+    cbUsdId         = Id with signatories = fromList [ cb ]; label = "USD@CB"; version = 0
+    cbUsdAsset      = Asset with id = cbUsdId; quantity = 1_000.0
+
+    aliceAccountId  = Id with signatories = fromList [ acme ]; label = "Alice@Acme"; version = 0
+    aliceAccount    = Account with id = aliceAccountId; provider = acme; owner = alice
+    aliceSettlement = AssetSettlementRule with account = aliceAccount; observers = empty; ctrls = empty
+
+    bobAccountId    = Id with signatories = fromList [ genco ]; label = "Bob@Genco"; version = 0
+    bobAccount      = Account with id = bobAccountId; provider = genco; owner = bob
+    bobSettlement   = AssetSettlementRule with account = bobAccount; observers = empty; ctrls = fromList [ genco ]
+
+    acmeAccountId   = Id with signatories = fromList [ cb ]; label = "Acme@CB"; version = 0
+    acmeAccount     = Account with id = acmeAccountId; provider = cb; owner = acme
+    acmeSettlement  = AssetSettlementRule with account = acmeAccount; observers = empty; ctrls = empty
+    acmeOwnAccountId   = Id with signatories = fromList [ acme ]; label = "Acme@Acme"; version = 0
+    acmeOwnAccount     = Account with id = acmeOwnAccountId; provider = acme; owner = acme
+    acmeOwnSettlement  = AssetSettlementRule with account = acmeOwnAccount; observers = empty; ctrls = fromList [ alice ]
+
+    gencoAccountId  = Id with signatories = fromList [ cb ]; label = "Genco@CB"; version = 0
+    gencoAccount    = Account with id = gencoAccountId; provider = cb; owner = genco
+    gencoSettlement = AssetSettlementRule with account = gencoAccount; observers = empty; ctrls = fromList [ acme ]
+    gencoOwnAccountId  = Id with signatories = fromList [ genco ]; label = "Genco@Genco"; version = 0
+    gencoOwnAccount    = Account with id = gencoOwnAccountId; provider = genco; owner = genco
+    gencoOwnSettlement = AssetSettlementRule with account = gencoOwnAccount; observers = empty; ctrls = empty
+
+    aliceDeposit    = AssetDeposit with account = aliceAccount; asset = cbUsdAsset; observers = empty
+    acmeDeposit     = AssetDeposit with account = acmeAccount; asset = cbUsdAsset; observers = empty
+    gencoDeposit    = AssetDeposit with account = gencoOwnAccount; asset = cbUsdAsset; observers = empty
+
+  aliceSettlementCid <- submit acme do create aliceSettlement
+  bobSettlementCid <- submit genco do create bobSettlement
+  acmeSettlementCid <- submit cb do create acmeSettlement
+  acmeOwnSettlementCid <- submit acme do create acmeOwnSettlement
+  gencoSettlementCid <- submit cb do create gencoSettlement
+  gencoOwnSettlementCid <- submit genco do create gencoOwnSettlement
+
+  aliceDepositCid <- submit acme do create aliceDeposit
+  acmeDepositCid  <- submit cb do create acmeDeposit
+  gencoDepositCid  <- submit genco do create gencoDeposit
+
+  aliceToAcmeDepositCid <- submit alice do
+    exercise aliceSettlementCid AssetSettlement_Transfer with
+      receiverAccountId = acmeOwnAccountId
+      depositCid = aliceDepositCid
+  acmeToGencoDepositCid <- submit acme do
+    exercise acmeSettlementCid AssetSettlement_Transfer with
+      receiverAccountId = gencoAccountId
+      depositCid = acmeDepositCid
+  gencoToBobDepositCid <- submit genco do
+    exercise gencoOwnSettlementCid AssetSettlement_Transfer with
+      receiverAccountId = bobAccountId
+      depositCid = gencoDepositCid
+
+  pure ()
+
+{-
+
+For the above transaction we need three individual transfers of assets, which represent three distinct points of failure. If any of the intermediaries fails to execute a transfer, but other transfers have already gone through, we can end up in very complex error recovery situations. These failure modes happen in real life and are operationally very expensive to rectify. Ideally, we would be able to execute the full settlement chain atomically, such that either all transfers execute, or none at all. The `DvP` (delivery-versus-payment) template in the Finance SDK provides this functionality and allows to settle arbitrarily complex chains of deliveries and payments atomically. A DvP trade is created together with a set of `SettlementInstruction`s, which detail the various settlement steps that need to happen for the given trade. These instructions are usually specific to a given use case so the Finance SDK doesn't provide a standard way to create them along with the DvP. So to model the example above we introduct a new template `DvpProposal`, which contains the logic to create the settlement instructions for a transfer of assets between Alice and Bob.
+
+-}
+
+template DvpProposal
+  with
+    tradeId : Id
+    asset : Asset
+    proposerAccount : Account
+    proposerBankAccount : Account
+    proposerBankOwnAccount : Account
+    counterpartyAccount : Account
+    counterpartyBankAccount : Account
+    counterpartyBankOwnAccount : Account
+  where
+    signatory proposerAccount.owner
+
+    controller counterpartyAccount.owner can
+      Accept : (ContractId Dvp, ContractId SettlementInstruction, ContractId DvpSettlementRule)
+        do
+          let
+            proposer = proposerAccount.owner
+            counterparty = counterpartyAccount.owner
+            label = "MasterAgreement between " <> partyToText proposer <> " and " <> partyToText counterparty
+            masterAgreementId = Id with signatories = fromList [ proposer, counterparty ]; label; version = 0
+            masterAgreement = MasterAgreement with id = masterAgreementId; party1 = proposer; party2 = counterparty
+            dvp = Dvp with
+              buyer = proposer
+              status = SettlementStatus_Instructed
+              settlementDate = None
+              payments = [ asset ]
+              deliveries = []
+              observers = empty
+              ..
+            steps =
+              [ SettlementDetails with senderAccount = proposerAccount, receiverAccount = proposerBankOwnAccount, depositCid = None
+              , SettlementDetails with senderAccount = proposerBankAccount, receiverAccount = counterpartyBankAccount, depositCid = None
+              , SettlementDetails with senderAccount = counterpartyBankOwnAccount, receiverAccount = counterpartyAccount, depositCid = None ]
+            settlementInstruction = SettlementInstruction with
+              observers = fromList [ proposerBankAccount.owner, counterpartyBankAccount.owner ]
+              ..
+            dvpSettlement = DvpSettlementRule with ..
+          dvpCid <- create dvp
+          siCid <- create settlementInstruction
+          dsCid <- create dvpSettlement
+          pure (dvpCid, siCid, dsCid)
+
+scenario6 = do
+  cb <- getParty "CentralBank"
+  acme <- getParty "AcmeBank"
+  genco <- getParty "GencoBank"
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  let
+    cbUsdId         = Id with signatories = fromList [ cb ]; label = "USD@CB"; version = 0
+    cbUsdAsset      = Asset with id = cbUsdId; quantity = 1_000.0
+
+    aliceAccountId  = Id with signatories = fromList [ acme ]; label = "Alice@Acme"; version = 0
+    aliceAccount    = Account with id = aliceAccountId; provider = acme; owner = alice
+    aliceSettlement = AssetSettlementRule with account = aliceAccount; observers = empty; ctrls = empty
+
+    bobAccountId    = Id with signatories = fromList [ genco ]; label = "Bob@Genco"; version = 0
+    bobAccount      = Account with id = bobAccountId; provider = genco; owner = bob
+    bobSettlement   = AssetSettlementRule with account = bobAccount; observers = empty; ctrls = fromList [ alice, genco ]
+
+    acmeAccountId   = Id with signatories = fromList [ cb ]; label = "Acme@CB"; version = 0
+    acmeAccount     = Account with id = acmeAccountId; provider = cb; owner = acme
+    acmeSettlement  = AssetSettlementRule with account = acmeAccount; observers = empty; ctrls = fromList [ alice ]
+    acmeOwnAccountId   = Id with signatories = fromList [ acme ]; label = "Acme@Acme"; version = 0
+    acmeOwnAccount     = Account with id = acmeOwnAccountId; provider = acme; owner = acme
+    acmeOwnSettlement  = AssetSettlementRule with account = acmeOwnAccount; observers = empty; ctrls = fromList [ alice ]
+
+    gencoAccountId  = Id with signatories = fromList [ cb ]; label = "Genco@CB"; version = 0
+    gencoAccount    = Account with id = gencoAccountId; provider = cb; owner = genco
+    gencoSettlement = AssetSettlementRule with account = gencoAccount; observers = empty; ctrls = fromList [ alice, acme ]
+    gencoOwnAccountId  = Id with signatories = fromList [ genco ]; label = "Genco@Genco"; version = 0
+    gencoOwnAccount    = Account with id = gencoOwnAccountId; provider = genco; owner = genco
+    gencoOwnSettlement = AssetSettlementRule with account = gencoOwnAccount; observers = empty; ctrls = fromList [ alice ]
+
+    aliceDeposit    = AssetDeposit with account = aliceAccount; asset = cbUsdAsset; observers = empty
+    acmeDeposit     = AssetDeposit with account = acmeAccount; asset = cbUsdAsset; observers = empty
+    gencoDeposit    = AssetDeposit with account = gencoOwnAccount; asset = cbUsdAsset; observers = empty
+
+    dvpProposal = DvpProposal with
+      tradeId = Id with signatories = empty; label = "DvP between Alice and Bob"; version = 0
+      asset = cbUsdAsset
+      proposerAccount = aliceAccount
+      proposerBankAccount = acmeAccount
+      proposerBankOwnAccount = acmeOwnAccount
+      counterpartyAccount = bobAccount
+      counterpartyBankAccount = gencoAccount
+      counterpartyBankOwnAccount = gencoOwnAccount
+
+  aliceSettlementCid <- submit acme do create aliceSettlement
+  bobSettlementCid <- submit genco do create bobSettlement
+  acmeSettlementCid <- submit cb do create acmeSettlement
+  acmeOwnSettlementCid <- submit acme do create acmeOwnSettlement
+  gencoSettlementCid <- submit cb do create gencoSettlement
+  gencoOwnSettlementCid <- submit genco do create gencoOwnSettlement
+
+  aliceDepositCid <- submit acme do create aliceDeposit
+  acmeDepositCid  <- submit cb do create acmeDeposit
+  gencoDepositCid  <- submit genco do create gencoDeposit
+
+  dvpProposalCid <- submit alice do create dvpProposal
+  (dvpCid, siCid, dsCid) <- submit bob do exercise dvpProposalCid Accept
+
+  siCid <- submit alice do exercise siCid SettlementInstruction_AllocateNext with depositCid = aliceDepositCid; ctrl = alice
+  siCid <- submit acme do exercise siCid SettlementInstruction_AllocateNext with depositCid = acmeDepositCid; ctrl = acme
+  siCid <- submit genco do exercise siCid SettlementInstruction_AllocateNext with depositCid = gencoDepositCid; ctrl = genco
+  
+  submit alice do
+    exercise dsCid DvpSettlement_Process with
+      dvpCid
+      paymentInstructionCids = [ siCid ]
+      deliveryInstructionCids = []
+      ctrl = alice
+  pure ()
+
+{-
+
+One downside of this model is that the banks have to provide liquidity via central bank deposits to facilitate the transaction due to the non-fungibility of each bank's deposits. To remediate this complexity it would require that the banks' clients would have access to the same central bank-backed USD asset and accounts as their banks. This is the main idea behind the concept of Central Bank Digital Currency, which is frequently discussed these days. We can use the flexible trust model in the Finance SDK to model such a setup. We still retain the hierarchy of clients holding accounts with their banks, and the bank holding accounts at the central bank. But we can use the central bank as the "3rd party agent" signatory on the client accounts. This way Bob can directly transfer assets ot Charlie without an offseting transaction at the central bank level and without involvement of their banks. In this scenario the USD deposits at their banks in effect don't represent claims against their banks anymore, they are claims held by the clients against the central bank. Note, that such a setup is dependent on having a legal framework in place that would let clients access and transfer those deposits even in the event of a default of their bank.
+
+-}
+
+scenario7 = do
+  cb <- getParty "CentralBank"
+  acme <- getParty "AcmeBank"
+  genco <- getParty "GencoBank"
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  let
+    cbUsdId         = Id with signatories = fromList [ cb ]; label = "USD"; version = 0
+    cbUsdAsset      = Asset with id = cbUsdId; quantity = 1_000.0
+
+    aliceAccountId  = Id with signatories = fromList [ cb ]; label = "Alice@Acme"; version = 0
+    aliceAccount    = Account with id = aliceAccountId; provider = acme; owner = alice
+    aliceSettlement = AssetSettlementRule with account = aliceAccount; observers = empty; ctrls = empty
+    aliceDeposit    = AssetDeposit with account = aliceAccount; asset = cbUsdAsset; observers = empty
+
+    bobAccountId  = Id with signatories = fromList [ cb ]; label = "Bob@Genco"; version = 0
+    bobAccount    = Account with id = bobAccountId; provider = genco; owner = bob
+    bobSettlement = AssetSettlementRule with account = bobAccount; observers = empty; ctrls = fromList [ alice ]
+
+  aliceSettlementCid  <- submit cb do create aliceSettlement
+  bobSettlementCid    <- submit cb do create bobSettlement
+
+  aliceDepositCid <- submit cb do create aliceDeposit
+
+  bobDepositCid <- submit alice do
+    exercise aliceSettlementCid AssetSettlement_Transfer with
+      receiverAccountId = bobAccountId
+      depositCid = aliceDepositCid
+
+  pure ()
+  
+{-
+In this model we have chosen the bank as the only signatory on the account, which means it can directly create the `AssetDeposit` for Alice. We refer to this as the _unilateral trust model_, where only the account provider signs deposits. This means that the bank is allowed to credit Alice with arbitrary assets, which might not be desirable from Alice's perspective as some assets carry associated obligations with it (eg. a loan). Therefore, we can move this to a _bilateral trust model_ where both the account provider and the owner have to sign a deposit. Since the `AssetDeposit` now cannot be created by the bank alone anymore, we have to establish a workflow to also collect Alice's signature. This could for example be done via an `AssetDepositRequest` template, that Alice creates for the bank to process. Another way is for the bank to first create an `AssetDeposit` for itself (which it can since it's both, the provider and the owner of its account), and then transfer the deposit to Alice using Alice's `AssetSettlementRule`. This rule contract explicitly grants the permission to credit Alice's , which 
+
+Alice deposits cash into her account at the bank
+
+-}

@@ -1,0 +1,71 @@
+daml 1.2
+module DA.Finance.Trade.Dvp.Lifecycle where
+
+import DA.Assert
+import DA.Foldable hiding (concat)
+
+import DA.Finance.Asset.Lifecycle
+import DA.Finance.Trade.Dvp
+import DA.Finance.Types
+import DA.Finance.Utils
+
+-- | Rule that allows to lifecycle a Dvp trade under the specified master agreement
+-- according to the provided lifecycle effects.
+template DvpLifecycleRule
+  with
+    masterAgreement : MasterAgreement
+      -- ^ The master agreement for which the rule can be used.
+  where
+    signatory masterAgreement.id.signatories
+    observer masterAgreement.party1, masterAgreement.party2
+
+    key masterAgreement.id : Id
+    maintainer key.signatories
+
+    nonconsuming choice DvpLifecycle_Process: ContractId Dvp
+      with
+        dvpCid : ContractId Dvp
+          -- ^ Dvp trade to be lifecycled.
+        lifecycleEffectsCid : ContractId LifecycleEffects
+          -- ^ Asset lifecycle effects.
+        ctrl : Party
+          -- ^ masterAgreement.party1 or masterAgreement.party2
+      controller ctrl
+      do
+        assert (ctrl == masterAgreement.party1 || ctrl == masterAgreement.party2)
+
+        dvp <- fetchAndArchive dvpCid
+        le <- fetch lifecycleEffectsCid
+        dvp.masterAgreement === masterAgreement
+
+        let (payments1, deliveries1) = unzip $ map (apply le) dvp.payments
+        let (deliveries2, payments2) = unzip $ map (apply le) dvp.deliveries
+        let (payments, deliveries) = net (concat payments1 ++ concat payments2) (concat deliveries1 ++ concat deliveries2)
+        
+        create dvp with
+          tradeId = dvp.tradeId with version = dvp.tradeId.version + 1
+          payments
+          deliveries
+
+-- | HIDE
+apply : LifecycleEffects -> Asset -> ([Asset], [Asset])
+apply le asset | le.id == asset.id =
+  let effects = map (\effect -> effect with quantity = asset.quantity * effect.quantity) le.effects
+      consuming = map (\consuming -> consuming with quantity = asset.quantity * consuming.quantity) le.consuming
+  in (effects, consuming)
+apply _ asset = ([asset], [])
+
+-- | HIDE 
+net : [Asset] -> [Asset] -> ([Asset], [Asset])
+net payments deliveries =
+  let paymentsNetted =
+        filter (\p -> p.quantity > 0.0)
+        $ map (\p -> p with quantity = p.quantity - foldMap (.quantity) (filter (\d -> d.id == p.id) deliveries))
+        payments
+
+      deliveriesNetted =
+        filter (\d -> d.quantity > 0.0)
+        $ map (\d -> d with quantity = d.quantity - foldMap (.quantity) (filter (\p -> p.id == d.id) payments))
+        deliveries
+        
+  in (paymentsNetted, deliveriesNetted)

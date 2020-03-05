@@ -1,0 +1,66 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Types where
+
+import DA.Next.Set as Set
+import DA.Text
+import Prelude hiding (id)
+
+-- | A versioned identifier backed by a set of signatories. Can be used as
+-- a primary key or foreign key of a contract.
+data Id = Id
+  with
+    signatories : Set Party
+      -- ^ The parties that need to sign a contract with this id and
+      -- that are responsible to ensure primary key uniqueness.
+    label : Text
+      -- ^ A label that makes a contract unique for a given set of signatories.
+    version : Int
+      -- ^ Allows to model multiple revisions of the same contract.
+  deriving (Eq, Ord)
+
+instance Show Id where
+  show Id{..} = "Sigs(" <> intercalate ";" (map show (Set.toList signatories)) <> ")-" <> label <> "-" <> show version
+ 
+-- | A record that identifies an account. Also includes the account
+-- stakeholders because they cannot be looked up from another contract
+-- when specifying choice actors.
+data Account = Account
+  with
+    id : Id
+      -- ^ References an account via its id. Depending on the desired trust
+      -- model, the signatories might be (i) both the provider and the owner,
+      -- (ii) just the provider or (iii) a third party agent.
+    provider : Party
+      -- ^ Allows to specify choices of the account provider.
+    owner : Party
+      -- ^ Allows to specify choices of the account owner.
+  deriving (Eq, Show)
+
+-- | A record that combines an asset id and quantity. Can be used to
+-- describe a quantified claim to an asset.
+data Asset = Asset
+  with
+    id : Id
+      -- ^ The asset id. Depending on the trust model, the signatories might
+      -- be the issuer or a third party reference data provider such as Reuters.
+    quantity : Decimal
+      -- ^ The amount of assets with the specified id.
+  deriving (Eq, Show)
+
+-- | A record that specifies a master agreement. Also includes the
+-- counterparties because they cannot be looked up from another contract
+-- when specifying choice actors.
+data MasterAgreement = MasterAgreement
+  with
+    id : Id
+      -- ^ References a master agreement via its id. Depending on the
+      -- desired trust model, the signatories might be both counterparties
+      -- or a third party agent.
+    party1 : Party
+      -- ^ Allows to specify choices of the first counterparty.
+    party2 : Party
+      -- ^ Allows to specify choices of the second counterparty.
+  deriving (Eq, Show)

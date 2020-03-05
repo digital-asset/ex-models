@@ -1,0 +1,15 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Trade.Types where
+
+-- | An enum that captures the settlement status of a trade.
+data SettlementStatus
+  = SettlementStatus_Pending
+    -- ^ An active trade prior to settlement
+  | SettlementStatus_Instructed
+    -- ^ A trade that has been instructed for settlement
+  | SettlementStatus_Settled
+    -- ^ A trade that has been settled
+  deriving (Eq, Show)

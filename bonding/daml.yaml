@@ -1,0 +1,14 @@
+sdk-version: 0.13.54
+name: bonding
+source: daml
+scenario: Bonding:bonding
+parties:
+  - Alice
+  - Bob
+  - AcmeBank
+  - GencoBank
+  - CentralBank
+version: 0.0.1
+dependencies:
+  - daml-prim
+  - daml-stdlib

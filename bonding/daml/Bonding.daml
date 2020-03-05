@@ -1,0 +1,159 @@
+daml 1.2
+
+module Bonding where
+
+import DA.Next.Set
+import DA.Finance.Asset
+import DA.Finance.Asset.Settlement
+import DA.Finance.Types
+
+template Bonding
+  with
+    issuer : Party
+    issuerCashAccount : Account
+    issuerTokenAccount : Account
+    issuerCashDepositCid : ContractId AssetDeposit
+    users : Set Party
+    tokenId : Id
+    paymentId : Id
+    supply : Decimal
+  where
+    signatory issuer
+    observer users
+
+    choice Buy : (ContractId Bonding, ContractId AssetDeposit)
+      with
+        user : Party
+        amount : Decimal
+        userCashDepositCid : ContractId AssetDeposit
+        userCashAccount : Account
+        userTokenAccount : Account
+      controller user
+      do
+        assertMsg "Controller is not a user" $ member user users
+
+        -- Assert sufficient cash
+        let price = (supply + amount) * 0.000001 -- bonding curve function to be inserted here
+        userCashDeposit <- fetch userCashDepositCid
+        assertMsg "Insufficient user cash deposit" $ userCashDeposit.asset.quantity >= price * amount
+
+        -- Transfer cash from user to issuer
+        (userCashSettlementCid, _) <- fetchByKey @AssetSettlementRule userCashAccount.id
+        addedIssuerCashDepositCid <-
+          exercise userCashSettlementCid AssetSettlement_Transfer with
+            receiverAccountId = issuerCashAccount.id
+            depositCid = userCashDepositCid
+
+        -- Issue token and transfer to user
+        let token = Asset with id = tokenId; quantity = amount
+        issuerTokenDepositCid <- create AssetDeposit with account = issuerTokenAccount; asset = token; observers = empty
+        (issuerTokenSettlementCid, _) <- fetchByKey @AssetSettlementRule issuerTokenAccount.id
+        userTokenDepositCid <- exercise issuerTokenSettlementCid AssetSettlement_Transfer with receiverAccountId = userTokenAccount.id; depositCid = issuerTokenDepositCid
+
+        -- Create new bonding contract with updated supply and merged issuer funds
+        newIssuerCashDepositCid <- exercise issuerCashDepositCid AssetDeposit_Merge with depositCids = [ addedIssuerCashDepositCid ]
+        newBondingCid <- create this with supply = supply + amount; issuerCashDepositCid = newIssuerCashDepositCid
+
+        return (newBondingCid, userTokenDepositCid)
+
+    choice Sell : (ContractId Bonding, ContractId AssetDeposit)
+      with
+        user : Party
+        userTokenDepositCid : ContractId AssetDeposit
+        userTokenAccount : Account
+        userCashAccount : Account
+      controller user
+      do
+        assertMsg "Controller is not a user" $ member user users
+
+        -- Assert sufficient cash
+        userTokenDeposit <- fetch userTokenDepositCid
+        let price = (supply - userTokenDeposit.asset.quantity) * 0.000001 -- bonding curve function to be inserted here
+        issuerCashDeposit <- fetch issuerCashDepositCid
+        assertMsg "Insufficient issuer cash deposit" $ issuerCashDeposit.asset.quantity >= price * userTokenDeposit.asset.quantity
+
+        -- Split and transfer cash from issuer to user
+        [ exactDepositCid, remainderDepositCid ] <- exercise issuerCashDepositCid AssetDeposit_Split with quantities = [ price * userTokenDeposit.asset.quantity ]
+        (issuerCashSettlementCid, _) <- fetchByKey @AssetSettlementRule issuerCashAccount.id
+        userCashDepositCid <-
+          exercise issuerCashSettlementCid AssetSettlement_Transfer with
+            receiverAccountId = userCashAccount.id
+            depositCid = exactDepositCid
+
+        -- Transfer token to issuer and burn (archive)
+        (userTokenSettlementCid, _) <- fetchByKey @AssetSettlementRule userTokenAccount.id
+        issuerTokenDepositCid <- exercise userTokenSettlementCid AssetSettlement_Transfer with receiverAccountId = issuerTokenAccount.id; depositCid = userTokenDepositCid
+        archive issuerTokenDepositCid
+
+        -- Create new bonding contract with updated supply and remaining issuer funds
+        newBondingCid <- create this with supply = supply - userTokenDeposit.asset.quantity; issuerCashDepositCid = remainderDepositCid
+
+        return (newBondingCid, userCashDepositCid)
+
+bonding = do
+  issuer <- getParty "Issuer"
+  bank <- getParty "Bank"
+  alice <- getParty "Alice"
+
+  -- Setup accounts
+  let
+    aliceCashAccountId    = Id with signatories = fromList [ bank ]; label = "Alice@Bank"; version = 0
+    issuerCashAccountId   = Id with signatories = fromList [ bank ]; label = "Issuer@Bank"; version = 0
+    aliceTokenAccountId   = Id with signatories = fromList [ issuer ]; label = "Alice@Issuer"; version = 0
+    issuerTokenAccountId  = Id with signatories = fromList [ issuer ]; label = "Issuer@Issuer"; version = 0
+
+    aliceCashAccount      = Account with id = aliceCashAccountId; provider = bank; owner = alice
+    issuerCashAccount     = Account with id = issuerCashAccountId; provider = bank; owner = issuer
+    aliceTokenAccount     = Account with id = aliceTokenAccountId; provider = issuer; owner = alice
+    issuerTokenAccount    = Account with id = issuerTokenAccountId; provider = issuer; owner = issuer
+
+    aliceCashSettlement   = AssetSettlementRule with account = aliceCashAccount; observers = empty; ctrls = fromList [ alice, issuer, bank ]
+    issuerCashSettlement  = AssetSettlementRule with account = issuerCashAccount; observers = fromList [ alice ]; ctrls = fromList [ alice, issuer, bank ]
+    aliceTokenSettlement  = AssetSettlementRule with account = aliceTokenAccount; observers = empty; ctrls = fromList [ alice, issuer, bank ]
+    issuerTokenSettlement = AssetSettlementRule with account = issuerTokenAccount; observers = empty; ctrls = fromList [ alice, issuer, bank ]
+
+    tokenId   = Id with signatories = fromList [ issuer ]; label = "Token by Issuer"; version = 0
+    paymentId = Id with signatories = fromList [ bank ]; label = "CHF by Bank"; version = 0
+
+    aliceAsset      = Asset with id = paymentId; quantity = 1_000.01
+    aliceDeposit    = AssetDeposit with account = aliceCashAccount; asset = aliceAsset; observers = fromList [ alice ]
+
+    issuerAsset     = Asset with id = paymentId; quantity = 0.0
+    issuerDeposit   = AssetDeposit with account = issuerCashAccount; asset = issuerAsset; observers = fromList [ alice ]
+
+    supply = 10_000_000.0
+    users = fromList [ alice ]
+
+  -- Create settlement contracts
+  submit bank do
+    create aliceCashSettlement
+    create issuerCashSettlement
+  submit issuer do
+    create aliceTokenSettlement
+    create issuerTokenSettlement
+
+  -- Create cash deposit for Alice
+  aliceCashDepositCid <- submit bank do create aliceDeposit
+  issuerCashDepositCid <- submit bank do create issuerDeposit
+
+  -- Create bonding contract
+  bondingCid <- submit issuer do create Bonding with ..
+
+  -- Alice buys tokens
+  (bondingCid, aliceTokenDepositCid) <- submit alice do
+    exercise bondingCid Buy with
+      user = alice
+      amount = 100.0
+      userCashDepositCid = aliceCashDepositCid
+      userCashAccount = aliceCashAccount
+      userTokenAccount = aliceTokenAccount
+
+  -- Alice sells tokens
+  (bondingCid, userCashDepositCid) <- submit alice do
+    exercise bondingCid Sell with
+      user = alice
+      userTokenDepositCid = aliceTokenDepositCid
+      userTokenAccount = aliceTokenAccount
+      userCashAccount = aliceCashAccount
+  
+  pure ()

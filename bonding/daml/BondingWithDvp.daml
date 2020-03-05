@@ -1,0 +1,123 @@
+daml 1.2
+
+module BondingWithDvp where
+
+import DA.Next.Set
+import DA.Finance.Asset
+import DA.Finance.Asset.Settlement
+import DA.Finance.Types
+import DA.Finance.Trade.Dvp
+import DA.Finance.Trade.Dvp.Settlement
+import DA.Finance.Trade.SettlementInstruction
+
+template BondingWithDvp
+  with
+    issuer : Party
+    cashAccount : Account
+    tokenAccount : Account
+    users : Set Party
+    tokenId : Id
+    paymentId : Id
+    supply : Decimal
+  where
+    signatory issuer
+    observer users
+
+    choice Buy : (ContractId BondingWithDvp, DvpSettlement_Process_Result)
+      with
+        user : Party
+        amount : Decimal
+        cashDeposit : ContractId AssetDeposit
+        userCashAccount : Account
+        userTokenAccount : Account
+      controller user
+      do
+        assertMsg "Controller is not a user" $ member user users
+        let
+          price = supply * 0.1
+          token = Asset with id = tokenId; quantity = amount
+          payment = Asset with id = paymentId; quantity = price * amount
+          maId = Id with signatories = fromList [ issuer, user ]; label = "IssuanceAgreement " <> partyToText issuer <> " " <> partyToText user; version = 0
+          ma = MasterAgreement with id = maId; party1 = issuer; party2 = user
+          dvpId = Id with signatories = empty; label = "IssuanceDvp " <> partyToText issuer <> " " <> partyToText user; version = 0
+          dvp = Dvp with
+            masterAgreement = ma
+            tradeId = dvpId
+            buyer = user
+            status = SettlementStatus_Instructed
+            settlementDate = None
+            payments = [ payment ]
+            deliveries = [ token ]
+            observers = empty
+          paymentDetails = SettlementDetails with
+            senderAccount = userCashAccount
+            receiverAccount = cashAccount
+            depositCid = Some cashDeposit
+          paymentInstruction = SettlementInstruction with
+            masterAgreement = ma
+            tradeId = dvpId
+            asset = payment
+            steps = [ paymentDetails ] 
+            observers = empty
+        tokenDeposit <- create AssetDeposit with account = tokenAccount; asset = token; observers = empty
+        let
+          deliveryDetails = SettlementDetails with
+            senderAccount = tokenAccount
+            receiverAccount = userTokenAccount
+            depositCid = Some tokenDeposit
+          deliveryInstruction = SettlementInstruction with
+            masterAgreement = ma
+            tradeId = dvpId
+            asset = token
+            steps = [ deliveryDetails ] 
+            observers = empty
+          dvpSettlement = DvpSettlementRule with masterAgreement = ma
+        dvpCid <- create dvp
+        paymentInstructionCids <- mapA create [ paymentInstruction ]
+        deliveryInstructionCids <- mapA create [ deliveryInstruction ]
+        dvpSettlementCid <- create dvpSettlement
+        res <- exercise dvpSettlementCid DvpSettlement_Process with ctrl = issuer; ..
+        bondingCid <- create this with supply = supply + amount
+        return (bondingCid, res)
+
+bonding = do
+  issuer <- getParty "Issuer"
+  bank <- getParty "Bank"
+  alice <- getParty "Alice"
+  
+  let
+    aliceCashAccountId  = Id with signatories = fromList [ bank ]; label = "Alice@Bank"; version = 0
+    issuerCashAccountId = Id with signatories = fromList [ bank ]; label = "Issuer@Bank"; version = 0
+    aliceTokenAccountId  = Id with signatories = fromList [ issuer ]; label = "Alice@Issuer"; version = 0
+    issuerTokenAccountId = Id with signatories = fromList [ issuer ]; label = "Issuer@Issuer"; version = 0
+
+    aliceCashAccount    = Account with id = aliceCashAccountId; provider = bank; owner = alice
+    issuerCashAccount   = Account with id = issuerCashAccountId; provider = bank; owner = issuer
+    aliceTokenAccount    = Account with id = aliceTokenAccountId; provider = issuer; owner = alice
+    issuerTokenAccount   = Account with id = issuerTokenAccountId; provider = issuer; owner = issuer
+
+    aliceCashSettlement = AssetSettlementRule with account = aliceCashAccount; observers = empty; ctrls = fromList [ alice, issuer, bank ]
+    issuerCashSettlement = AssetSettlementRule with account = issuerCashAccount; observers = empty; ctrls = fromList [ alice, issuer, bank ]
+    aliceTokenSettlement = AssetSettlementRule with account = aliceTokenAccount; observers = empty; ctrls = fromList [ alice, issuer, bank ]
+    issuerTokenSettlement = AssetSettlementRule with account = issuerTokenAccount; observers = empty; ctrls = fromList [ alice, issuer, bank ]
+
+    tokenId         = Id with signatories = fromList [ issuer ]; label = "Token by Issuer"; version = 0
+    paymentId       = Id with signatories = fromList [ bank ]; label = "CHF by Bank"; version = 0
+
+    aliceAsset      = Asset with id = paymentId; quantity = 1_000_000.0
+    aliceDeposit = AssetDeposit with account = aliceCashAccount; asset = aliceAsset; observers = empty
+
+    supply = 10_000_000.0
+    bonding = BondingWithDvp with cashAccount = issuerCashAccount; tokenAccount = issuerTokenAccount; users = fromList [ alice ]; ..
+
+  submit bank do
+    create aliceCashSettlement
+    create issuerCashSettlement
+  submit issuer do
+    create aliceTokenSettlement
+    create issuerTokenSettlement
+
+  aliceDepositCid <- submit bank do create aliceDeposit
+  bondingCid <- submit issuer do create bonding
+  res <- submit alice do exercise bondingCid Buy with user = alice; amount = 1.0; cashDeposit = aliceDepositCid; userCashAccount = aliceCashAccount; userTokenAccount = aliceTokenAccount
+  pure ()

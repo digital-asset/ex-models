@@ -1,0 +1,77 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Asset where
+
+import DA.Action
+import DA.Assert
+import DA.Next.Set
+
+import DA.Finance.Types
+import DA.Finance.Utils
+
+-- | Represents a deposit of an asset in an account. The `account.id` and `asset.id` fields
+-- can be used to link the contract to other contracts that provide further information
+-- such as the type of the asset or reference data for it. This allows new asset classes
+-- to be added without having to modify business processes that operate on generic
+-- asset deposits.
+template AssetDeposit
+  with
+    account : Account
+      -- ^ A deposit is allocated to an account and backed by the account.id.signatories.
+      -- Depending on the desired trust model this might be (i) both the provider and the
+      -- owner, (ii) just the provider or (iii) a third party agent.
+    asset : Asset
+      -- ^ Specifies the id and the amount of assets deposited. The asset.id.signatories
+      -- are the parties that publish reference data and hence the details for how to
+      -- lifecycle the asset.
+    observers : Set Party
+  where
+    signatory account.id.signatories
+    observer insert account.provider observers
+    ensure asset.quantity >= 0.0
+
+    let setQty (qty: Decimal) (ad: AssetDeposit) =
+          ad with asset = ad.asset with quantity = qty
+
+    controller account.owner can
+      AssetDeposit_SetObservers : ContractId AssetDeposit
+        with newObservers : Set Party
+        do create this with observers = newObservers
+
+    controller account.owner can
+      AssetDeposit_Split : [ContractId AssetDeposit]
+        -- ^ Splits an asset deposit according to the provided list of quantities.
+        with
+          quantities : [Decimal]
+            -- ^ The quantities of the newly created asset deposits. The total quantity
+            -- needs to be smaller or equal than the current quantity. If it does not add up,
+            -- an asset deposit with the remainder is created.
+        do
+          let quantitySum = foldl (+) 0.0 quantities
+          assert $ quantitySum <= asset.quantity
+
+          let quantitiesAll =
+                if quantitySum == asset.quantity
+                then quantities
+                else quantities ++ [asset.quantity - quantitySum]
+          mapA (\q -> create $ setQty q this) quantitiesAll
+
+      AssetDeposit_Merge : ContractId AssetDeposit
+        -- ^ Merges a list of asset deposits with the given one into one.
+        with
+          depositCids : [ContractId AssetDeposit]
+            -- ^ The asset deposits that will be consumed. All fields except for the quantity
+            -- need to match.
+        do
+          deposit <-
+            foldlA
+              (\acc cid -> do
+                c <- fetchAndArchive cid
+                c === (setQty c.asset.quantity acc)
+                return $ setQty (acc.asset.quantity + c.asset.quantity) acc
+              )
+            this
+            depositCids
+          create deposit

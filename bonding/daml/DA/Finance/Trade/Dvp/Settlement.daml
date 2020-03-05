@@ -1,0 +1,75 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Trade.Dvp.Settlement where
+
+import DA.Assert
+import DA.List
+import DA.Optional
+
+import DA.Finance.Asset
+import DA.Finance.Trade.Dvp
+import DA.Finance.Trade.SettlementInstruction
+import DA.Finance.Types
+import DA.Finance.Utils
+
+-- | The outputs of the DvpSettlement_Process choice.
+data DvpSettlement_Process_Result = DvpSettlement_Process_Result
+  with
+    dvpCid : ContractId Dvp
+      -- ^ Settled Dvp trade
+    paymentDepositCids : [[ContractId AssetDeposit]]
+      -- ^ Transferred asset deposits for each payment obligation
+    deliveryDepositCids : [[ContractId AssetDeposit]]
+      -- ^ Transferred asset deposits for each delivery obligation
+  deriving (Eq, Show)
+
+-- | Rule that allows to settle a Dvp under the specified master agreement by providing
+-- fully allocated settlement instructions for each payment and delivery obligation.
+template DvpSettlementRule
+  with
+    masterAgreement : MasterAgreement
+      -- ^ The master agreement for which the rule can be used.
+  where
+    signatory masterAgreement.id.signatories
+    observer masterAgreement.party1, masterAgreement.party2
+
+    key masterAgreement.id : Id
+    maintainer key.signatories
+
+    nonconsuming choice DvpSettlement_Process: DvpSettlement_Process_Result
+      with
+        dvpCid : ContractId Dvp
+          -- ^ Dvp trade to be settled
+        paymentInstructionCids : [ContractId SettlementInstruction]
+          -- ^ Fully allocated settlement instruction for each payment asset.
+        deliveryInstructionCids : [ContractId SettlementInstruction]
+          -- ^ Fully allocated settlement instruction for each delivery asset.
+        ctrl : Party
+          -- ^ masterAgreement.party1 or masterAgreement.party2
+      controller ctrl
+      do
+        assert (ctrl == masterAgreement.party1 || ctrl == masterAgreement.party2)
+
+        dvp <- fetchAndArchive dvpCid
+        dvp.masterAgreement === masterAgreement
+        dvp.status === SettlementStatus_Instructed
+        whenSome dvp.settlementDate (assertOnOrAfterDateMsg "expects settlementDate <= now")
+
+        let seller = if dvp.buyer == masterAgreement.party1 then masterAgreement.party2 else masterAgreement.party1
+
+        let work sender receiver (asset, instructionCid) = do
+              instruction <- fetch instructionCid
+              instruction.masterAgreement === dvp.masterAgreement
+              instruction.tradeId === dvp.tradeId
+              instruction.asset === asset
+              (head instruction.steps).senderAccount.owner === sender
+              (last instruction.steps).receiverAccount.owner === receiver
+              exercise instructionCid SettlementInstruction_Process
+
+        dvpNewCid <- create dvp with status = SettlementStatus_Settled
+        paymentDepositCids <- mapA (work dvp.buyer seller) $ zipChecked dvp.payments paymentInstructionCids
+        deliveryDepositCids <- mapA (work seller dvp.buyer) $ zipChecked dvp.deliveries deliveryInstructionCids
+
+        return DvpSettlement_Process_Result with dvpCid = dvpNewCid, paymentDepositCids, deliveryDepositCids

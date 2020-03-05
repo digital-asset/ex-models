@@ -1,0 +1,92 @@
+daml 1.2
+module DA.Finance.Asset.Lifecycle where
+
+import DA.Assert
+import DA.Foldable (mapA_)
+import DA.Next.Set as Set
+
+import DA.Finance.Asset
+import DA.Finance.Asset.Settlement
+import DA.Finance.Types
+import DA.Finance.Utils
+
+-- | Rule that allows to lifecycle deposits in a specified account. 
+template AssetLifecycleRule
+  with
+    account : Account
+      -- ^ The account for which the rule can be used.
+  where
+    signatory account.id.signatories
+
+    key account.id : Id
+    maintainer key.signatories
+
+    controller account.owner can
+      nonconsuming AssetLifecycle_Process : [ContractId AssetDeposit]
+        -- ^ Allows the owner to lifecycle an asset deposit according to its lifecycle
+        -- effects published by the deposit.asset.id.signatories.
+        with
+          lifecycleEffectsCid : ContractId LifecycleEffects
+            -- ^ Asset lifecycle effects.
+          depositCid : ContractId AssetDeposit
+            -- ^ The asset deposit that will be lifecycled.
+          consumingDepositCids : [ContractId AssetDeposit]
+            -- ^ The asset deposits that will be consumed as part of lifecycling the asset.
+          accountIds : Optional [Id]
+           -- ^ Optional list of account ids where the lifecycle effects end up in.
+        do
+          deposit <- fetchAndArchive depositCid
+          lifecycleEffects <- fetch lifecycleEffectsCid
+          deposit.asset.id === lifecycleEffects.id
+
+          mapA_
+            (\(depositCid, consuming) -> do
+                let asset = consuming with quantity = consuming.quantity * deposit.asset.quantity
+                deposit <- fetch depositCid
+                debitedAsset <- exerciseByKey @AssetSettlementRule deposit.account.id AssetSettlement_Debit with ..
+                debitedAsset === asset
+            )
+            (zipChecked consumingDepositCids lifecycleEffects.consuming)
+
+          case accountIds of
+            None ->
+              mapA 
+                (\effect -> do
+                  let asset = effect with quantity = effect.quantity * deposit.asset.quantity
+                  create deposit with asset
+                )
+                lifecycleEffects.effects
+            Some ids -> do
+              mapA
+                (\(accountId, effect) -> do
+                  let asset = effect with quantity = effect.quantity * deposit.asset.quantity
+                  exerciseByKey @AssetSettlementRule accountId AssetSettlement_Credit with asset, ctrl = account.owner
+                )
+                (zipChecked ids lifecycleEffects.effects)
+
+-- | Describes the lifecycle effects of an asset deposit. Can be used to process
+-- corporate actions such as an equity cash dividend that increases the asset's
+-- version number and creates a separate entitlement.
+template LifecycleEffects
+  with
+    id : Id
+      -- ^ The id of the asset to be lifecycled.
+    consuming : [Asset]
+      -- ^ The ids and amounts of assets to be consumed when lifecycleing one
+      -- unit of the specified asset id.
+    effects : [Asset]
+      -- ^ The ids and amounts of assets to be created when lifecycling one unit
+      -- of the specified asset id.
+    observers : Set Party
+  where
+    signatory id.signatories
+    observer observers
+    ensure all (\a -> a.quantity > 0.0) effects
+
+    key id : Id
+    maintainer key.signatories
+
+    controller id.signatories can
+      LifecycleEffects_SetObservers : ContractId LifecycleEffects
+        with newObservers : Set Party
+        do create this with observers = newObservers

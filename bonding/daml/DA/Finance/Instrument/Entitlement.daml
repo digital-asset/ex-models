@@ -1,0 +1,50 @@
+-- Copyright (c) 2019, Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module DA.Finance.Instrument.Entitlement where
+
+import DA.Next.Set
+
+import DA.Finance.Asset.Lifecycle
+import DA.Finance.Types
+import DA.Finance.Utils
+
+-- | Reference data describing an asset that entitles the owner to receive the
+-- underlying asset at the settlement date. Can be used to lifecycle asset
+-- deposits, trades or dependent instruments.
+template Entitlement
+  with
+    id : Id
+      -- ^ The asset id of the entitlement. Depending on the trust model the
+      -- signatories might be the issuer or a third party reference data provider
+      -- such as Reuters.
+    settlementDate : Date
+      -- ^ The date on which the underlying asset gets delivered.
+    underlying : Asset
+      -- ^ The id and quantity of the underlying asset that gets delivered.
+    payment : Optional Asset
+      -- ^ The id and quantity of an asset that optionally needs to be paid
+      -- to receive the underlying asset.
+    observers : Set Party
+  where
+    signatory id.signatories
+    observer observers
+
+    key id : Id
+    maintainer key.signatories
+
+    controller id.signatories can
+      Entitlement_SetObservers : ContractId Entitlement
+        with newObservers : Set Party
+        do create this with observers = newObservers
+
+      nonconsuming Entitlement_Lifecycle : ContractId LifecycleEffects
+        -- ^ Allows the id.signatories to create lifecycle effects.
+        do
+          assertOnOrAfterDateMsg "expects settlementDate <= now" $ settlementDate
+          create LifecycleEffects with
+            id
+            consuming = optional [] pure payment
+            effects = [ underlying ]
+            observers = observers

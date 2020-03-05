@@ -1,0 +1,71 @@
+daml 1.2
+module DA.Finance.Asset.Settlement where
+
+import DA.Assert
+import DA.Next.Set as Set
+
+import DA.Finance.Asset
+import DA.Finance.Types
+import DA.Finance.Utils
+
+-- | Rule that allows to credit or transfer asset deposits
+-- in the specified account.
+template AssetSettlementRule
+  with
+    account : Account
+      -- ^ The account for which the rule can be used.
+    observers : Set Party
+      -- ^ Set of parties that will be added as observers
+      -- when an asset is credited, i.e. an asset deposit is
+      -- created.
+    ctrls : Set Party
+      -- ^ Set of parties who can act as a controller
+      -- of the `AssetSettlement_Credit` choice.
+  where
+    signatory account.id.signatories
+    observer ctrls, observers
+
+    key account.id : Id
+    maintainer key.signatories
+
+    controller account.owner can
+      nonconsuming AssetSettlement_Transfer : ContractId AssetDeposit
+        -- ^ Gives the owner the right to transfer an asset deposit to a new owner.
+        -- Requires that the AssetSettlementRule of the receiver account is available
+        -- for use.
+        with
+          receiverAccountId : Id
+            -- ^ The account id to which the asset deposit will be transferred to.
+          depositCid : ContractId AssetDeposit
+            -- ^ The asset deposit that will be consumed.
+        do
+          asset <- exercise self AssetSettlement_Debit with depositCid
+          exerciseByKey @AssetSettlementRule receiverAccountId AssetSettlement_Credit with asset, ctrl = account.owner
+
+    controller account.id.signatories can
+      nonconsuming AssetSettlement_Debit : Asset
+        -- ^ Gives the account.id.signatories the right to debit (i.e. archive)
+        -- an asset deposit.
+        with
+          depositCid : ContractId AssetDeposit
+            -- ^ The asset deposit that will be consumed.
+        do
+          deposit <- fetchAndArchive depositCid
+          deposit.account === account
+          return deposit.asset
+
+    nonconsuming choice AssetSettlement_Credit : ContractId AssetDeposit
+      -- ^ Allows a `ctrl` (if part of `ctrls`) to create an asset deposit.
+      -- The controller parties are the the account.id.signatories less account.owner
+      -- plus `ctrl` to guarantee that the choice can only be called from another choice
+      -- like the Transfer choice. The receiving account.owner is removed from the controlling set
+      -- because his signature is in general not available.
+      with
+        asset : Asset
+          -- ^ The asset to be created.
+        ctrl : Party
+      controller Set.delete account.owner account.id.signatories, ctrl
+      do
+        assertMsg "ctrl must be part of ctrls." $ ctrl `Set.member` ctrls
+        create AssetDeposit with account, asset, observers
+  
