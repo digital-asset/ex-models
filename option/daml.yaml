@@ -1,4 +1,4 @@
-sdk-version: 0.13.14
+sdk-version: 0.13.54
 name: option
 version: 1.0.0
 source: daml/Main.daml

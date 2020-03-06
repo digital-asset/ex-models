@@ -32,11 +32,6 @@ data MoveData = MoveData with
   to : IntCoord
   piece : Piece
 
--- | This allows us to use `assertMsg` and `===` within a `do` block for
--- | `Either Text`
-instance CanAbort E where
-  abort = Left
-
 -- | Text identifiers of the columns of a chess board.
 letterCoords = ["A", "B", "C", "D", "E", "F", "G", "H"]
 
