@@ -1,4 +1,4 @@
-sdk-version: 0.13.40
+sdk-version: 0.13.54
 name: shop
 version: 1.0.0
 source: daml/Test.daml
@@ -9,8 +9,6 @@ parties:
 - Owner
 - Vendor
 - User
-exposed-modules:
-- Main
 dependencies:
 - daml-prim
 - daml-stdlib

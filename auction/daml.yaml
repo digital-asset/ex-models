@@ -1,4 +1,4 @@
-sdk-version: 0.13.18
+sdk-version: 0.13.54
 name: auction
 source: daml/Main.daml
 scenario: Main:setup
