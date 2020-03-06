@@ -1,0 +1,57 @@
+daml 1.2
+module Fungible where
+
+import Asset
+
+
+template Quantity t => Fungible t
+  with
+    issuer    : Party
+    owner     : Party
+    observers : [Party]
+  where
+    signatory issuer, owner
+
+    observer observers
+
+    key (issuer, owner) : (Party, Party)
+
+    maintainer key._2
+
+    controller owner can
+      nonconsuming SplitAsset : (ContractId t, ContractId t)
+        with
+          assetCid    : ContractId t
+          splitAmount : Decimal
+        do
+          assert (splitAmount > 0.0)
+          asset <- fetch assetCid
+          assert (asset.owner == owner)
+          assert (asset.issuer == issuer)
+          assert (asset.amount > splitAmount)
+          archive assetCid
+          splitCid <- create asset with amount = splitAmount
+          restCid <- create asset with amount = asset.amount - splitAmount
+          return (splitCid, restCid)
+
+      nonconsuming MergeAssets : (ContractId t)
+        with
+          firstAssetCid  : ContractId t
+          secondAssetCid : ContractId t
+        do
+          first <- fetch firstAssetCid
+          second <- fetch secondAssetCid
+          assert (first.owner == owner)
+          assert (first.issuer == issuer)
+          assert (first == second with amount = first.amount)
+          archive firstAssetCid
+          archive secondAssetCid
+          create first with amount = first.amount + second.amount
+
+      DiscloseFungible : ContractId (Fungible t)
+        with
+          party : Party
+        do
+          create this
+            with observers = if elem party observers
+                  then observers else party :: observers

@@ -1,0 +1,22 @@
+-- Copyright (c) 2019 The DAML Authors. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Bitcoin.Utils where
+
+
+type Satoshi = Int
+type BitcoinAddress = Text
+type BTC = Decimal
+
+
+oneBTC : Satoshi
+oneBTC = 100000000
+
+
+oneSatoshi : BTC
+oneSatoshi = 0.00000001
+
+
+toBTC : Satoshi -> BTC
+toBTC satoshi = intToDecimal satoshi * oneSatoshi
