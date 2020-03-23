@@ -20,13 +20,13 @@ testThreeRepeat = scenario do
   let
     moves = [
       (white, ("A", 2), ("A", 4)),
-      (black, ("A", 7), ("A", 5)),  
+      (black, ("A", 7), ("A", 5)),
       -- (1) Move the A column rooks forward and back.
       (white, ("A", 1), ("A", 3)),
       (black, ("A", 8), ("A", 6)),
       (white, ("A", 3), ("A", 1)),
       (black, ("A", 6), ("A", 8)),
-      -- (2) 
+      -- (2)
       (white, ("A", 1), ("A", 3)),
       (black, ("A", 8), ("A", 6)),
       (white, ("A", 3), ("A", 1)),
