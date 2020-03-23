@@ -4,7 +4,7 @@
 daml 1.2
 module Tests.SpecialRules where
 
-import DA.Map as M
+import DA.Next.Map as M
 import DA.Either
 
 import Chess
