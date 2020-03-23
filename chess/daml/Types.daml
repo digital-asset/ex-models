@@ -13,6 +13,12 @@ data GameId = GameId with
   black : Party
     deriving (Eq, Show)
 
+oppositePlayer : Party -> GameId -> Party
+oppositePlayer player gameId =
+  if player == gameId.white
+  then gameId.black
+  else gameId.white
+
 data PieceType =
   Pawn | Rook | Knight | Bishop | Queen | King
     deriving (Eq, Show, Ord)

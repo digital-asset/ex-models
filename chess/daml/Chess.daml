@@ -18,11 +18,7 @@ template GameProposal
   where
     signatory proposer
 
-    let
-      receiver =
-        if proposer == gameId.white
-          then gameId.black
-          else gameId.white
+    let receiver = oppositePlayer proposer gameId
 
     controller receiver can
       StartGame : ContractId Game
@@ -86,11 +82,7 @@ template DrawProposal
   where
     signatory proposer
 
-    let
-      receiver =
-        if proposer == gameId.white
-          then gameId.black
-          else gameId.white
+    let receiver = oppositePlayer proposer gameId
 
     controller receiver can
       AcceptDraw : ContractId Result
