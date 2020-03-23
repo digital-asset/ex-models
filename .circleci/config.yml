@@ -1,0 +1,59 @@
+version: 2.1
+#orbs:
+#  slack: circleci/slack@3.2.0
+executors:
+  daml_sdk:
+    docker:
+      - image: digitalasset/daml-sdk:0.13.54
+jobs:
+  build-and-test-job:
+    executor: daml_sdk
+    parameters:
+      folder:
+        description: "Folder to build and test"
+        type: string
+    steps:
+      - checkout
+      - run: |
+          set -euo pipefail
+          cd << parameters.folder >>
+          daml build
+          daml test
+      #- slack/status:
+      #    fail_only: true
+      #    failure_message: "<!here> Build failure on ${CIRCLE_BRANCH} at step ${CIRCLE_JOB} detected.\nCommit by: ${CIRCLE_USERNAME}."
+      #    only_for_branches: master
+      #    webhook: ${}
+workflows:
+  build-and-test-workflow:
+    jobs:
+      - build-and-test-job:
+          folder: airline
+      - build-and-test-job:
+          folder: approval-chain
+      - build-and-test-job:
+          folder: auction
+      - build-and-test-job:
+          folder: broadcast
+      - build-and-test-job:
+          folder: chat
+      - build-and-test-job:
+          folder: chess
+      - build-and-test-job:
+          folder: crowd-funding
+      - build-and-test-job:
+          folder: expense-pool
+      - build-and-test-job:
+          folder: governance
+      - build-and-test-job:
+          folder: issuertoken
+      - build-and-test-job:
+          folder: onboarding
+      - build-and-test-job:
+          folder: option
+      - build-and-test-job:
+          folder: shop
+      - build-and-test-job:
+          folder: task-tracking
+      - build-and-test-job:
+          folder: tic-tac-toe
