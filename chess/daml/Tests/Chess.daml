@@ -10,9 +10,11 @@ import Chess
 import Init
 import Types
 
-takeMove : Scenario (Either (ContractId Result) (ContractId Game))
+type ResultOrNextGame = Either (ContractId Result) (ContractId Game)
+
+takeMove : Scenario ResultOrNextGame
   -> (Party, (Text, Int), (Text, Int))
-  -> Scenario (Either (ContractId Result) (ContractId Game))
+  -> Scenario ResultOrNextGame
 takeMove seg m = do
   eg <- seg
   case eg of
