@@ -6,6 +6,7 @@ module Tests.SpecialRules where
 
 import DA.Next.Map as M
 import DA.Either
+import DA.Optional
 
 import Chess
 import Init
@@ -55,10 +56,10 @@ testCastle = scenario do
           sm <- mapState kc.state
           king <- optionalToEither "King position not occupied" $ M.lookup (7,1) sm
           assertMsg "No King in expected position"
-            (king.tp == King && king.moved == True)
+            (king.tp == King && king.moved)
           rook <- optionalToEither "Rook position not occupied" $ M.lookup (6,1) sm
           assertMsg "No Rook in expected position"
-            (rook.tp == Rook && rook.moved == True)
+            (rook.tp == Rook && rook.moved)
       case t of
         Left e -> abort e
         Right _ -> assert True
@@ -135,7 +136,7 @@ testEnPassant = scenario do
       let
         t = do
           sm <- mapState ep.state
-          assertMsg "Black pawn should be gone" (None == M.lookup (3,5) sm)
+          assertMsg "Black pawn should be gone" (isNone (M.lookup (3,5) sm))
       case t of
         Left e -> abort e
         Right _ -> assert True
@@ -187,7 +188,7 @@ testPromote = scenario do
           sm <- mapState p.state
           queen <- optionalToEither "Queen position not occupied" $ M.lookup (1,8) sm
           assertMsg ("No Queen in expected position: " <> show queen)
-            (queen.tp == Queen && queen.moved == True)
+            (queen.tp == Queen && queen.moved)
       case t of
         Left e -> abort e
         Right _ -> assert True
