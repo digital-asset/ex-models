@@ -4,6 +4,7 @@
 daml 1.2
 module Rules.Move where
 
+import DA.Foldable
 import DA.Next.Map as M
 import DA.Optional
 
@@ -25,7 +26,7 @@ simpleMove md = do
     isCapture = isSome capture
   movePath <- path md.piece.tp md.state.player isCapture md.from md.to
 
-  forA movePath (\c -> assertMsg "Path blocked" (isNone $ M.lookup c md.stateMap))
+  forA_ movePath (\c -> assertMsg "Path blocked" (isNone $ M.lookup c md.stateMap))
 
   return $
     M.insert md.to
