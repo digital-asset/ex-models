@@ -14,8 +14,8 @@ checkPromotion : MoveData -> E PieceType
 checkPromotion md = case md.move.promote of
     Some t -> do
       assertMsg "Promotion not allowed" (md.piece.tp == Pawn &&
-        (md.state.player == Black && md.to._2 == 8) ||
-        (md.state.player == White && md.to._1 == 1)
+        (md.state.player == Black && md.to._2 == 0) ||
+        (md.state.player == White && md.to._2 == 7)
         )
       return t
     _ -> return $ md.piece.tp

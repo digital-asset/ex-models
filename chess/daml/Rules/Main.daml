@@ -67,8 +67,8 @@ checkCheck md stateMap =
   case md.move.check of
     None -> return md.state.everCheck
     Some (p, k) -> do
-      from <- intCoord p
-      to <- intCoord k
+      let from = toIntCoord p
+          to = toIntCoord k
       piece <- optionalToEither "Check from position not occupied" $ M.lookup from stateMap
       king <- optionalToEither "Check from position not occupied" $ M.lookup to stateMap
       assertMsg "Player doesn't own piece" (md.state.player == piece.owner)

@@ -13,27 +13,36 @@ import Types
 type ResultOrNextGame = Either (ContractId Result) (ContractId Game)
 
 takeMove : Scenario ResultOrNextGame
-  -> (Party, (Text, Int), (Text, Int))
+  -> (Party, Coord, Coord)
   -> Scenario ResultOrNextGame
-takeMove seg m = do
+takeMove seg (player, from, to) = do
   eg <- seg
   case eg of
     Left _ -> abort "Can't continue won game"
-    Right g -> submit m._1 do
+    Right g -> submit player do
       exercise g Move with
-        move = ChessMove (uncurry Coord m._2) (uncurry Coord m._3) None None
+        move = ChessMove with
+                          from
+                          to
+                          promote = None
+                          check = None
+
+testEnum = scenario do
+  let lst = [0..63]
+  let coords = [A1 .. H8]
+  lst === fmap fromEnum coords
 
 testFoolsMate = scenario do
   InitData {..} <- initData
 
   let
     moves = [
-      (white, ("G", 2), ("G", 4)),
-      (black, ("E", 7), ("E", 6)),
-      (white, ("F", 2), ("F", 4)),
-      (black, ("D", 8), ("H", 4)),
-      (white, ("E", 1), ("F", 2)),
-      (black, ("H", 4), ("F", 2))
+      (white, G2, G4),
+      (black, E7, E6),
+      (white, F2, F4),
+      (black, D8, H4),
+      (white, E1, F2),
+      (black, H4, F2)
       ]
   game <- foldl takeMove (return $ Right game) moves
 
