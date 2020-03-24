@@ -5,17 +5,38 @@ daml 1.2
 module Rules.Data where
 
 import DA.Either
-import DA.List
 import DA.Next.Map as M
 import DA.Text as T
 
 import Types
 
 -- Some aliases for ease of use
+-- col, row [0,7]
 type IntCoord = (Int, Int)
+
+-- | Turns a `Coord` into integer coordinates with x in [0-7]
+toIntCoord : Coord -> IntCoord
+toIntCoord c = (i / 8, i % 8)
+  where i = fromEnum c
+
+toCoord (col, row) = toEnum i
+  where i = col * 8 + row
+
+flipRow : IntCoord -> IntCoord
+flipRow (col, row) = (col, 7 - row)
+
+flipCol : IntCoord -> IntCoord
+flipCol (col, row) = (7 - col, row)
+
+colD : IntCoord -> IntCoord -> Int
+colD c1 c2 = abs(c1._1 - c2._1)
+
+rowD : IntCoord -> IntCoord -> Int
+rowD c1 c2 = abs(c1._2 - c2._2)
+
 instance MapKey IntCoord where
-  keyToText (a, b) = keyToText a <> ";" <> keyToText b
-  keyFromText t = case splitOn ";" t of
+  keyToText c = keyToText c._1 <> ";" <> keyToText c._2
+  keyFromText t = case T.splitOn ";" t of
     [a, b] -> (keyFromText a, keyFromText b)
     _ -> error "malformatted key"
 
@@ -32,45 +53,32 @@ data MoveData = MoveData with
   to : IntCoord
   piece : Piece
 
--- | Text identifiers of the columns of a chess board.
-letterCoords = ["A", "B", "C", "D", "E", "F", "G", "H"]
-
--- | Turns a `Coord` into integer coordinates with x in [1-8] and
--- | y in [1-8]. Fails if the `row` or `col` fields are out of range
-intCoord : Coord -> E IntCoord
-intCoord p = do
-  assertMsg "Row coordinate must be between 1 and 8" (p.row <= 8 && p.row >= 1)
-  assertMsg "Col coordinate must have one letter" (T.length p.col == 1)
-  col <- optionalToEither "Col coordinate must be between A and H" (elemIndex p.col letterCoords)
-  Right (col + 1, p.row)
-
-
 -- | Takes a `GameState` and tries to turn it into a map from
--- | integer coordinates x in [1-8] and y in [1-8]. Fails if a
+-- | integer coordinates x in [0-7] and y in [0-7]. Fails if a
 -- | field is double occupied.
 mapState : GameState -> E StateMap
 mapState s =
   foldl
     work
-    (Right $ fromList[])
+    (Right M.empty)
     s.pieces
   where
     work e p =
       case e of
         r@(Left _) -> r
         Right m -> do
-          pc <- intCoord (coord p)
+          let pc = toIntCoord p.coord
           if member pc m
             then
-              Left ("Double occupation on " <> show pc)
+              Left ("Double occupation on " <> show p)
             else
-              Right (insert pc p m)
+              Right (M.insert pc p m)
 
 -- | Function to pre-process move and game state
 toMoveData : GameState -> ChessMove -> E MoveData
 toMoveData state move = do
-  from <- intCoord move.from
-  to <- intCoord move.to
+  let from = toIntCoord move.from
+      to = toIntCoord move.to
   stateMap <- mapState state
   piece <- optionalToEither "From position not occupied" $ M.lookup from stateMap
   assertMsg "Player doesn't own piece" (state.player == piece.owner)
@@ -88,26 +96,22 @@ initState x =
 
     initWhitePawns =
       map (\l -> Piece with
-        coord = Coord with
-          row = 2
-          col = l
+        coord = toCoord (l, 1)
         tp = Pawn
         owner = White
         moved = False)
-      letterCoords
+      [0 .. 7]
 
     initWhitePieces = initWhitePawns ++
-      map (\t -> Piece with
-        coord = Coord with
-          row = 1
-          col = t._1
-        tp = t._2
+      map (\(col, tp) -> Piece with
+        coord = toCoord (col, 0)
+        tp = tp
         owner = White
         moved = False)
-      (zip letterCoords initTypes)
+      (zip [0..7] initTypes)
 
     mirror : Piece -> Piece
     mirror p = p with
-      coord = p.coord with row = 9 - p.coord.row
+      coord = toCoord (flipRow (toIntCoord p.coord))
       owner = Black
     initBlackPieces = map mirror initWhitePieces

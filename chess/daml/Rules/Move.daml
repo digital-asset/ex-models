@@ -49,9 +49,4 @@ checkCapture md = do
       return piece.owner
 
   assertMsg "Can't capture own piece" (toOwner /= Some md.state.player)
-
-  case tgtCoord of
-    None -> return None
-    Some c -> do
-      ret <- intCoord c
-      return (Some ret)
+  return $ fmap toIntCoord tgtCoord

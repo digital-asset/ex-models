@@ -23,14 +23,14 @@ target md =
 targetInner : MoveData -> E IntCoord
 targetInner md = do
   let lastMove = head md.state.moves
-  lmTo <- intCoord lastMove.to
-  lmFrom <- intCoord lastMove.from
+      lmTo = toIntCoord lastMove.to
+      lmFrom = toIntCoord lastMove.from
   lastMovePiece <- optionalToEither
     "Unexpected error: Piece not found."
     (M.lookup lmTo md.stateMap)
   let
     lastMoveMatch = lastMovePiece.tp == Pawn
-          && abs(lmTo._2 - lmFrom._2) == 2
+          && rowD lmTo lmFrom == 2
     targetMatch = epTarget == lmTo
     tgt = if lastMoveMatch && targetMatch && md.piece.tp == Pawn
       then epTarget

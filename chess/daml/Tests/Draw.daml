@@ -6,6 +6,7 @@ module Tests.Draw where
 
 import DA.Assert
 
+import Types
 import Chess
 import Init
 
@@ -19,23 +20,23 @@ testThreeRepeat = scenario do
 
   let
     moves = [
-      (white, ("A", 2), ("A", 4)),
-      (black, ("A", 7), ("A", 5)),
+      (white, A2, A4),
+      (black, A7, A5),
       -- (1) Move the A column rooks forward and back.
-      (white, ("A", 1), ("A", 3)),
-      (black, ("A", 8), ("A", 6)),
-      (white, ("A", 3), ("A", 1)),
-      (black, ("A", 6), ("A", 8)),
+      (white, A1, A3),
+      (black, A8, A6),
+      (white, A3, A1),
+      (black, A6, A8),
       -- (2)
-      (white, ("A", 1), ("A", 3)),
-      (black, ("A", 8), ("A", 6)),
-      (white, ("A", 3), ("A", 1)),
-      (black, ("A", 6), ("A", 8)),
+      (white, A1, A3),
+      (black, A8, A6),
+      (white, A3, A1),
+      (black, A6, A8),
       -- (3)
-      (white, ("A", 1), ("A", 3)),
-      (black, ("A", 8), ("A", 6)),
-      (white, ("A", 3), ("A", 1)),
-      (black, ("A", 6), ("A", 8))
+      (white, A1, A3),
+      (black, A8, A6),
+      (white, A3, A1),
+      (black, A6, A8)
       ]
   game <- foldl takeMove (return $ Right game) moves
 
@@ -59,19 +60,19 @@ testFiftyMove = scenario do
 
   let
     moves = [
-      (white, ("A", 2), ("A", 4)),
-      (black, ("A", 7), ("A", 5))
+      (white, A2, A4),
+      (black, A7, A5)
       ] ++
       (join (replicate 11 [
-        (white, ("A", 1), ("A", 3)),
-        (black, ("A", 8), ("A", 6)),
-        (white, ("A", 3), ("A", 1)),
-        (black, ("A", 6), ("A", 8))
+        (white, A1, A3),
+        (black, A8, A6),
+        (white, A3, A1),
+        (black, A6, A8)
       ])) ++
       [
-        (white, ("A", 1), ("A", 3)),
-        (black, ("A", 8), ("A", 6)),
-        (white, ("A", 3), ("B", 3))
+        (white, A1, A3),
+        (black, A8, A6),
+        (white, A3, B3)
       ]
   game <- foldl takeMove (return $ Right game) moves
 
@@ -81,7 +82,7 @@ testFiftyMove = scenario do
         exercise g ClaimDraw
     Left _ -> abort "Should be in play"
 
-  game <- takeMove (return game) (black, ("A", 6), ("A", 8))
+  game <- takeMove (return game) (black, A6, A8)
 
 
   draw <- case game of

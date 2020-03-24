@@ -22,18 +22,18 @@ testCastle = scenario do
   submitMustFail white do
     exercise game Move with
           move = ChessMove with
-            from = Coord "E" 1
-            to = Coord "G" 1
+            from = E1
+            to = G1
             promote = None
             check = None
   let
     moves = [
-      (white, ("G", 2), ("G", 4)),
-      (black, ("G", 7), ("G", 6)),
-      (white, ("F", 1), ("H", 3)),
-      (black, ("G", 6), ("G", 5)),
-      (white, ("G", 1), ("F", 3)),
-      (black, ("F", 8), ("H", 6))
+      (white, G2, G4),
+      (black, G7, G6),
+      (white, F1, H3),
+      (black, G6, G5),
+      (white, G1, F3),
+      (black, F8, H6)
       ]
   game <- foldl takeMove (return $ Right game) moves
 
@@ -42,8 +42,8 @@ testCastle = scenario do
       submit white do
         exercise g Move with
           move = ChessMove with
-            from = Coord "E" 1
-            to = Coord "G" 1
+            from = E1
+            to = G1
             promote = None
             check = None
     Left _ -> abort "Should be in play"
@@ -54,10 +54,10 @@ testCastle = scenario do
       let
         t = do
           sm <- mapState kc.state
-          king <- optionalToEither "King position not occupied" $ M.lookup (7,1) sm
+          king <- optionalToEither "King position not occupied" $ M.lookup (6,0) sm
           assertMsg "No King in expected position"
             (king.tp == King && king.moved)
-          rook <- optionalToEither "Rook position not occupied" $ M.lookup (6,1) sm
+          rook <- optionalToEither "Rook position not occupied" $ M.lookup (5,0) sm
           assertMsg "No Rook in expected position"
             (rook.tp == Rook && rook.moved)
       case t of
@@ -71,15 +71,15 @@ testCheck = scenario do
   submitMustFail white do
     exercise game Move with
           move = ChessMove with
-            from = Coord "E" 1
-            to = Coord "G" 1
+            from = E1
+            to = G1
             promote = None
-            check = Some ((Coord "H" 4), (Coord "E" 1))
+            check = Some (H4, E1)
   let
     moves = [
-      (white, ("G", 2), ("G", 4)),
-      (black, ("E", 7), ("E", 6)),
-      (white, ("F", 2), ("F", 4))
+      (white, G2, G4),
+      (black, E7, E6),
+      (white, F2, F4)
       ]
   game <- foldl takeMove (return $ Right game) moves
 
@@ -88,10 +88,10 @@ testCheck = scenario do
       submit black do
         exercise g Move with
           move = ChessMove with
-            from = Coord "D" 8
-            to = Coord "H" 4
+            from = D8
+            to = H4
             promote = None
-            check = Some ((Coord "H" 4), (Coord "E" 1))
+            check = Some (H4, E1)
     Left _ -> abort "Should be in play"
 
   case check of
@@ -106,16 +106,16 @@ testEnPassant = scenario do
   submitMustFail white do
     exercise game Move with
           move = ChessMove with
-            from = Coord "B" 2
-            to = Coord "C" 3
+            from = B2
+            to = C3
             promote = None
             check = None
   let
     moves = [
-      (white, ("B", 2), ("B", 4)),
-      (black, ("E", 7), ("E", 6)),
-      (white, ("B", 4), ("B", 5)),
-      (black, ("C", 7), ("C", 5))
+      (white, B2, B4),
+      (black, E7, E6),
+      (white, B4, B5),
+      (black, C7, C5)
       ]
   game <- foldl takeMove (return $ Right game) moves
 
@@ -124,8 +124,8 @@ testEnPassant = scenario do
       submit white do
         exercise g Move with
           move = ChessMove with
-            from = Coord "B" 5
-            to = Coord "C" 6
+            from = B5
+            to = C6
             promote = None
             check = None
     Left _ -> abort "Should be in play"
@@ -148,24 +148,24 @@ testPromote = scenario do
   submitMustFail white do
     exercise game Move with
           move = ChessMove with
-            from = Coord "B" 2
-            to = Coord "C" 3
+            from = B2
+            to = C3
             promote = Some Queen
             check = None
   let
     moves = [
-      (white, ("A", 2), ("A", 4)),
-      (black, ("A", 7), ("A", 5)),
-      (white, ("B", 2), ("B", 4)),
-      (black, ("A", 5), ("B", 4)),
-      (white, ("A", 4), ("A", 5)),
-      (black, ("A", 8), ("A", 6)),
-      (white, ("C", 2), ("C", 3)),
-      (black, ("A", 6), ("H", 6)),
-      (white, ("A", 5), ("A", 6)),
-      (black, ("H", 6), ("G", 6)),
-      (white, ("A", 6), ("A", 7)),
-      (black, ("G", 6), ("H", 6))
+      (white, A2, A4),
+      (black, A7, A5),
+      (white, B2, B4),
+      (black, A5, B4),
+      (white, A4, A5),
+      (black, A8, A6),
+      (white, C2, C3),
+      (black, A6, H6),
+      (white, A5, A6),
+      (black, H6, G6),
+      (white, A6, A7),
+      (black, G6, H6)
       ]
   game <- foldl takeMove (return $ Right game) moves
 
@@ -174,8 +174,8 @@ testPromote = scenario do
       submit white do
         exercise g Move with
           move = ChessMove with
-            from = Coord "A" 7
-            to = Coord "A" 8
+            from = A7
+            to = A8
             promote = Some Queen
             check = None
     Left _ -> abort "Should be in play"
@@ -186,7 +186,7 @@ testPromote = scenario do
       let
         t = do
           sm <- mapState p.state
-          queen <- optionalToEither "Queen position not occupied" $ M.lookup (1,8) sm
+          queen <- optionalToEither "Queen position not occupied" $ M.lookup (0,7) sm
           assertMsg ("No Queen in expected position: " <> show queen)
             (queen.tp == Queen && queen.moved)
       case t of
