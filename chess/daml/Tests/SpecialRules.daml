@@ -97,7 +97,7 @@ testCheck = scenario do
   case check of
     Right g -> do
       c <- submit white do fetch g
-      assertMsg "White should be checked" (c.state.everCheck == (True, False))
+      assertMsg "White should be checked" (c.state.everCheck == EverCheck { white = True, black = False})
     Left _ -> abort "Game should be in play"
 
 testEnPassant = scenario do

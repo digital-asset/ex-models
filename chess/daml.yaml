@@ -6,6 +6,7 @@ scenario: Init:initData
 parties:
 - Alice
 - Bob
+- Ref
 exposed-modules:
 - Init
 dependencies:
