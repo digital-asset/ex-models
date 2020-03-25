@@ -27,8 +27,8 @@ castle md = do
   let
     everCheck =
       if md.state.player == White
-        then md.state.everCheck._1
-        else md.state.everCheck._2
+        then md.state.everCheck.white
+        else md.state.everCheck.black
   assertMsg "Move an unmoved, unchecked King to castle"
     (md.piece.tp == King && not md.piece.moved && not everCheck)
 

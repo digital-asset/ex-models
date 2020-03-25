@@ -4,12 +4,13 @@
 daml 1.2
 module Types where
 
-import DA.Next.Map as M
+import DA.Next.Map qualified as M
 
 data GameId = GameId with
   ref : Text
   white : Party
   black : Party
+  operator : Party
     deriving (Eq, Show)
 
 oppositePlayer : Party -> GameId -> Party
@@ -36,9 +37,9 @@ data Coord = A1 | A2 | A3 | A4 | A5 | A6 | A7 | A8
            | H1 | H2 | H3 | H4 | H5 | H6 | H7 | H8
     deriving (Eq, Show, Ord, Enum)
 
-instance MapKey Coord where
-  keyToText c = keyToText $ fromEnum c
-  keyFromText t = toEnum $ keyFromText t
+instance M.MapKey Coord where
+  keyToText c = M.keyToText $ fromEnum c
+  keyFromText t = toEnum $ M.keyFromText t
 
 data Piece = Piece with
   coord : Coord
@@ -47,19 +48,54 @@ data Piece = Piece with
   moved : Bool
     deriving (Eq, Show, Ord)
 
-data GameState = GameState with
-  player : Player
-  pieces : [Piece]
-  everCheck : (Bool, Bool)
-  moves : [ChessMove]
+data EverCheck = EverCheck with
+  white : Bool
+  black : Bool
     deriving (Eq, Show)
 
 data ChessMove = ChessMove with
   from : Coord
   to : Coord
+  by : Player
   promote : Optional PieceType
   check : Optional (Coord, Coord)
     deriving (Eq, Show)
+
+data GameState = GameState with
+  player : Player
+  pieces : [Piece]
+  everCheck : EverCheck
+  moves : [ChessMove]
+    deriving (Eq, Show)
+
+-- In Fog-Of-War variant each player has this.
+data SplitGameState = SplitGameState with
+  player : Player
+  pieces : [Piece]
+  everCheck : Bool
+  moves : [ChessMove]
+    deriving (Eq, Show)
+
+-- this is a bit naive at-the-moment, in real fog-of-war white would be able to see black pieces that it is threatening.
+splitGameStateOfPlayer : Player -> GameState -> SplitGameState
+splitGameStateOfPlayer player gs =
+  SplitGameState with
+    player
+    pieces = filter (\p -> p.owner == player) gs.pieces
+    everCheck = case player of
+                  White -> gs.everCheck.white
+                  Black -> gs.everCheck.black
+    moves = filter (\m -> m.by == player) gs.moves
+
+joinGameStates : Player -> SplitGameState -> SplitGameState -> GameState
+joinGameStates turn s1 s2 =
+  GameState with
+    player = turn
+    pieces = s1.pieces ++ s2.pieces
+    everCheck = case s1.player of
+                  White -> EverCheck with white = s1.everCheck; black = s2.everCheck
+                  Black -> EverCheck with black = s1.everCheck; white = s2.everCheck
+    moves = s1.moves ++ s2.moves
 
 data MoveResult
   = Winner Player

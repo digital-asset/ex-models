@@ -84,34 +84,44 @@ toMoveData state move = do
   assertMsg "Player doesn't own piece" (state.player == piece.owner)
   return $ MoveData with ..
 
+initPieces : Player -> [Piece]
+initPieces Black =
+  let mirror p = p with
+          coord = toCoord (flipRow (toIntCoord p.coord))
+          owner = Black
+  in
+  map mirror (initPieces White)
+initPieces White =
+  let initTypes = [Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]
+      pawns = map (\l -> Piece with
+                coord = toCoord (l, 1)
+                tp = Pawn
+                owner = White
+                moved = False)
+              [0 .. 7]
+      pieces =
+          map (\(col, tp) -> Piece with
+            coord = toCoord (col, 0)
+            tp = tp
+            owner = White
+            moved = False)
+          (zip [0..7] initTypes)
+  in
+  pawns ++ pieces
 
-initState x =
+initState =
   GameState with
     player = White
     pieces = initWhitePieces ++ initBlackPieces
-    everCheck = (False, False)
+    everCheck = EverCheck with white = False, black = False
     moves = []
   where
-    initTypes = [Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]
+    initWhitePieces = initPieces White
+    initBlackPieces = initPieces Black
 
-    initWhitePawns =
-      map (\l -> Piece with
-        coord = toCoord (l, 1)
-        tp = Pawn
-        owner = White
-        moved = False)
-      [0 .. 7]
-
-    initWhitePieces = initWhitePawns ++
-      map (\(col, tp) -> Piece with
-        coord = toCoord (col, 0)
-        tp = tp
-        owner = White
-        moved = False)
-      (zip [0..7] initTypes)
-
-    mirror : Piece -> Piece
-    mirror p = p with
-      coord = toCoord (flipRow (toIntCoord p.coord))
-      owner = Black
-    initBlackPieces = map mirror initWhitePieces
+initSplitState player =
+  SplitGameState with
+    player
+    pieces = initPieces player
+    everCheck = False
+    moves = []
