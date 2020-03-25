@@ -21,25 +21,37 @@ template GameProposal
     gameId : GameId
     proposer : Party
   where
-    let receiver = oppositePlayer proposer gameId
+    let opponent = oppositePlayer proposer gameId
         operator = gameId.operator
     signatory proposer
-
-    controller operator can
-      StartGame : GameContractIds
+    controller opponent can
+      InitGame : ContractId StartGame
         do
-          black <- create PassiveSideOfGame with
-                    player = receiver
+          create StartGame with ..
+
+template StartGame
+  with
+    proposer : Party
+    opponent : Party
+    operator : Party
+    gameId : GameId
+  where
+    signatory proposer, opponent
+    controller operator can
+      DoIt : GameContractIds
+        do
+          passiveId <- create PassiveSideOfGame with
+                    player = opponent
                     operator
                     gameId
                     passive = Rules.Data.initSplitState Black
-          white <- create ActiveSideOfGame with
-                    player = proposer
-                    operator
-                    gameId
-                    active = Rules.Data.initSplitState White
-                    passiveId = black
-          return (white, black)
+          activeId <- create ActiveSideOfGame with
+                        player = proposer
+                        operator
+                        gameId
+                        active = Rules.Data.initSplitState White
+                        passiveId
+          return (activeId, passiveId)
 
 template Result
   with
@@ -70,20 +82,49 @@ template PassiveSideOfGame
           winner : Optional Party
         do
           create Result with ..
+    -- controller player can
+      --Resign : ()
+
+template ActiveSideOfGame
+  with
+    player : Party
+    operator : Party
+    gameId : GameId
+    active : SplitGameState
+    passiveId : ContractId PassiveSideOfGame
+  where
+    signatory player, operator
+
+    controller player can
+      nonconsuming Move : ContractId ActiveMove
+        with
+          move : ChessMove
+        do
+          create ActiveMove with activeId = self, ..
+
+    controller [operator, player] can
+      MakePassive : ContractId PassiveSideOfGame
+        with
+          move : ChessMove
+        do
+          let passive = active with moves = move :: active.moves
+          create PassiveSideOfGame with ..
+
 
 template ActiveMove
   with
+    player : Party
     operator : Party
     gameId : GameId
     active : SplitGameState
     move : ChessMove
     activeId : ContractId ActiveSideOfGame
     passiveId : ContractId PassiveSideOfGame  -- in lieu of a unique key setup.
+  -- need a unique key to prevent double moves.
   where
-    signatory operator
+    signatory operator, player
     controller operator can
       AdvancePlay : Either (ContractId Result) GameContractIds
-        with
         do
           passiveState <- fetch passiveId
           let joinedState = joinGameStates active.player active passiveState.passive
@@ -103,29 +144,5 @@ template ActiveMove
                 passiveId <- exercise activeId MakePassive with move
                 activeId <- exercise passiveId Activate with passiveId, ..
                 return (Right (activeId, passiveId))
-
-template ActiveSideOfGame
-  with
-    player : Party
-    operator : Party
-    gameId : GameId
-    active : SplitGameState
-    passiveId : ContractId PassiveSideOfGame
-  where
-    signatory player, operator
-    controller operator can
-      MakePassive : ContractId PassiveSideOfGame
-        with
-          move : ChessMove
-        do
-          let passive = active with moves = move :: active.moves
-          create PassiveSideOfGame with ..
-
-    controller player can
-      nonconsuming Move : ContractId ActiveMove
-        with
-          move : ChessMove
-        do
-          create ActiveMove with activeId = self, ..
 
 
