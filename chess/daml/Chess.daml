@@ -21,15 +21,15 @@ template GameProposal
     gameId : GameId
     proposer : Party
   where
-    let opponent = oppositePlayer proposer gameId
+    let opponent = oppositeParty proposer gameId
         operator = gameId.operator
     signatory proposer
     controller opponent can
-      InitGame : ContractId StartGame
+      InitGame : ContractId GameStart
         do
-          create StartGame with ..
+          create GameStart with ..
 
-template StartGame
+template GameStart
   with
     proposer : Party
     opponent : Party
@@ -38,7 +38,7 @@ template StartGame
   where
     signatory proposer, opponent
     controller operator can
-      DoIt : GameContractIds
+      Start : GameContractIds
         do
           passiveId <- create PassiveSideOfGame with
                     player = opponent
@@ -53,10 +53,10 @@ template StartGame
                         passiveId
           return (activeId, passiveId)
 
-template Result
+template GameResult
   with
-    game : GameState
     gameId : GameId
+    game : Optional GameState
     winner : Optional Party
   where
     signatory gameId.operator
@@ -76,14 +76,18 @@ template PassiveSideOfGame
           passiveId : ContractId PassiveSideOfGame
         do
           create ActiveSideOfGame with ..
-      End : ContractId Result
+      End : ContractId GameResult
         with
-          game : GameState
           winner : Optional Party
+          game : Optional GameState
         do
-          create Result with ..
-    -- controller player can
-      --Resign : ()
+          create GameResult with ..
+
+    controller player can
+      Resign : ContractId GameResult
+        do
+          let opponent = oppositeParty player gameId
+          create GameResult with winner = Some opponent, game = None, ..
 
 template ActiveSideOfGame
   with
@@ -110,7 +114,6 @@ template ActiveSideOfGame
           let passive = active with moves = move :: active.moves
           create PassiveSideOfGame with ..
 
-
 template ActiveMove
   with
     player : Party
@@ -124,7 +127,7 @@ template ActiveMove
   where
     signatory operator, player
     controller operator can
-      AdvancePlay : Either (ContractId Result) GameContractIds
+      AdvancePlay : Either (ContractId GameResult) GameContractIds
         do
           passiveState <- fetch passiveId
           let joinedState = joinGameStates active.player active passiveState.passive
@@ -132,8 +135,11 @@ template ActiveMove
             Winner player ->
               let winner =  if player == White then gameId.white else gameId.black in
               do
-                win <- create Result with winner = Some winner; game = joinedState, gameId
-                return (Left win)
+                win <- create GameResult with
+                        winner = Some winner
+                        game = Some joinedState
+                        gameId
+                return $ Left win
             Error e -> abort e
             NewState newJoinedState ->
               let whiteState = splitGameStateOfPlayer White newJoinedState
@@ -143,6 +149,4 @@ template ActiveMove
               do
                 passiveId <- exercise activeId MakePassive with move
                 activeId <- exercise passiveId Activate with passiveId, ..
-                return (Right (activeId, passiveId))
-
-
+                return $ Right (activeId, passiveId)
