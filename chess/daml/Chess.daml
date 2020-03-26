@@ -41,16 +41,13 @@ template GameStart
       Start : GameContractIds
         do
           passiveId <- create PassiveSideOfGame with
-                    player = opponent
-                    operator
-                    gameId
-                    passive = Rules.Data.initSplitState Black
+                        player = opponent
+                        passive = Rules.Data.initSplitState Black
+                        ..
           activeId <- create ActiveSideOfGame with
                         player = proposer
-                        operator
-                        gameId
                         active = Rules.Data.initSplitState White
-                        passiveId
+                        ..
           return (activeId, passiveId)
 
 template GameResult
@@ -61,6 +58,8 @@ template GameResult
   where
     signatory gameId.operator
 
+type SideKey = (Party, GameId)
+
 template PassiveSideOfGame
   with
     player : Party
@@ -69,11 +68,13 @@ template PassiveSideOfGame
     passive : SplitGameState
   where
     signatory player, operator
+    key (operator, gameId) : SideKey
+    maintainer key._1
+
     controller operator can
       Activate : ContractId ActiveSideOfGame
         with
           active : SplitGameState
-          passiveId : ContractId PassiveSideOfGame
         do
           create ActiveSideOfGame with ..
       End : ContractId GameResult
@@ -95,16 +96,17 @@ template ActiveSideOfGame
     operator : Party
     gameId : GameId
     active : SplitGameState
-    passiveId : ContractId PassiveSideOfGame
   where
     signatory player, operator
+    key (operator, gameId) : SideKey
+    maintainer key._1
 
     controller player can
       nonconsuming Move : ContractId ActiveMove
         with
           move : ChessMove
         do
-          create ActiveMove with activeId = self, ..
+          create ActiveMove with ..
 
     controller [operator, player] can
       MakePassive : ContractId PassiveSideOfGame
@@ -121,24 +123,27 @@ template ActiveMove
     gameId : GameId
     active : SplitGameState
     move : ChessMove
-    activeId : ContractId ActiveSideOfGame
-    passiveId : ContractId PassiveSideOfGame  -- in lieu of a unique key setup.
-  -- need a unique key to prevent double moves.
   where
     signatory operator, player
+
+    -- need a unique key to prevent double moves.
+    key (operator, gameId, move) : (Party, GameId, ChessMove)
+    maintainer key._1
+
     controller operator can
       AdvancePlay : Either (ContractId GameResult) GameContractIds
         do
-          passiveState <- fetch passiveId
+          (passiveId, passiveState) <- fetchByKey @PassiveSideOfGame (operator, gameId)
+          (activeId, activeState) <- fetchByKey @ActiveSideOfGame (operator, gameId)
           let joinedState = joinGameStates active.player active passiveState.passive
           case tryMove joinedState move of
             Winner player ->
               let winner =  if player == White then gameId.white else gameId.black in
               do
-                win <- create GameResult with
-                        winner = Some winner
-                        game = Some joinedState
-                        gameId
+                win <- exercise passiveId End with
+                            winner = Some winner
+                            game = Some joinedState
+                -- TODO: End the activeState too
                 return $ Left win
             Error e -> abort e
             NewState newJoinedState ->
@@ -148,5 +153,5 @@ template ActiveMove
               in
               do
                 passiveId <- exercise activeId MakePassive with move
-                activeId <- exercise passiveId Activate with passiveId, ..
+                activeId <- exercise passiveId Activate with ..
                 return $ Right (activeId, passiveId)
