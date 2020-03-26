@@ -9,34 +9,33 @@ import Types
 import Rules.Data
 import Rules.Util
 
+-- | Path of move: Bool is EnPassant
 path : PieceType -> Player -> Bool -> IntCoord -> IntCoord -> E [IntCoord]
-path _ _ _ c1 c2
-  | c1 == c2 = abort "Null move is not valid"
-path Pawn White True c1 c2 = do
-  assertMsg "Invalid move" (c1._2 + 1 == c2._2 && abs(c1._1 - c2._1) == 1)
+path _ _ _ i1 i2
+  | i1 == i2 = abort "Null move is not valid"
+path Pawn White True i1 i2 = do
+  assertMsg "Invalid move" (i1._2 + 1 == i2._2 && colD i1 i2 == 1)
   return []
-path Pawn White False (x1,2) (x2,4) = do
-  assertMsg "Invalid move" (x1 == x2)
-  return [(x1,3)]
-path Pawn White False (x1,y1) (x2,y2) = do
-  assertMsg "Invalid move" (x1 == x2 && y2 == y1 + 1)
+path Pawn White False (c1,1) (c2,3) = do    -- can move pawn 2 spaces if on home row.
+  assertMsg "Invalid move" (c1 == c2)
+  return [(c1,2)]
+path Pawn White False (c1,r1) (c2,r2) = do  -- can move pawn 1 space
+  assertMsg "Invalid move" (c1 == c2       && r2 == r1 + 1)
   return []
-path Rook _ _ c1@(x1, y1) c2@(x2, y2) = do
-  assertMsg "Invalid move" (x1 == x2 || y1 == y2)
-  pathBetween c1 c2
-path Knight _ _ (x1, y1) (x2, y2) = do
-  assertMsg "Invalid move" ((abs(x1 - x2), abs(y1 - y2)) `elem` [(1, 2), (2, 1)])
+path Rook _ _ i1@(c1, r1) i2@(c2, r2) = do  -- can move rook along straight paths
+  assertMsg "Invalid move" (r1 == r2 || c1 == c2)
+  pathBetween i1 i2
+path Knight _ _ i1 i2 = do                  -- can move Knight 1 & 2 spaces.
+  assertMsg "Invalid move" ((colD i1 i2, rowD i1 i2) `elem` [(1, 2), (2, 1)])
   return []
-path Bishop _ _ c1@(x1, y1) c2@(x2, y2) = do
-    assertMsg "Invalid move" (abs(x1 - x2) == abs(y1 - y2))
-    pathBetween c1 c2
-path Queen _ _ c1 c2 = pathBetween c1 c2
-path King _ _ (x1, y1) (x2, y2) = do
-  assertMsg "Invalid move" (abs(x1 - x2) <= 1 && abs(y1 - y2) <= 1)
+path Bishop _ _ i1 i2 = do                  -- can move Bishop the same distance along row and col
+    assertMsg "Invalid move" (colD i1 i2 == rowD i1 i2)
+    pathBetween i1 i2
+path Queen _ _ i1 i2 = pathBetween i1 i2    -- can move Queen only if there's path.
+path King _ _ i1 i2 = do                    -- can move King only 1 space
+  assertMsg "Invalid move" (colD i1 i2 <= 1 && rowD i1 i2 <= 1)
   return []
-path Pawn Black a c1 c2 =
+path Pawn Black a i1 i2 =
   do
-    p <- path Pawn White a (mirror c1) (mirror c2)
-    return (map mirror p)
-  where
-    mirror (x, y) = (x, 9 - y)
+    p <- path Pawn White a (flipRow i1) (flipRow i2)
+    return (map flipRow p)

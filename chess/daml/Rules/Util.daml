@@ -5,18 +5,19 @@ daml 1.2
 module Rules.Util where
 
 import Types
+import Rules.Data
 
-pathBetween : (Int, Int) -> (Int, Int) -> Either Text [(Int, Int)]
-pathBetween (x1, y1) (x2, y2)
-  | x1 > x2 = do
-    pb <- pathBetween (9 - x1, y1) (9 - x2, y2)
-    return $ map (\(x,y) -> (9 - x, y)) pb
-  | y1 > y2 = do
-    pb <- pathBetween (x1, 9 - y1) (x2, 9 - y2)
-    return $ map (\(x,y) -> (x, 9 - y)) pb
-  | x1 == x2 = Right $ map (\i -> (x1, y1 + i)) [1..(y2 - y1 - 1)]
-  | y1 == y2 = Right $ map (\i -> (x1 + i, y1)) [1..(x2 - x1 - 1)]
-  | y2 - y1 == x2 - x1 = Right $ map (\i -> (x1 + i, y1 + i)) [1..(x2 - x1 - 1)]
+pathBetween : IntCoord -> IntCoord -> Either Text [IntCoord]
+pathBetween i1@(c1, r1) i2@(c2, r2)
+  | c1 > c2 = do
+    pb <- pathBetween (flipCol i1) (flipCol i2)
+    return $ map flipCol pb
+  | r1 > r2 = do
+    pb <- pathBetween (flipRow i1) (flipRow i2)
+    return $ map flipRow pb
+  | c1 == c2 = Right $ map (\i -> (c1, r1 + i)) [1..(r2 - r1 - 1)]
+  | r1 == r2 = Right $ map (\i -> (c1 + i, r1)) [1..(c2 - c1 - 1)]
+  | r2 - r1 == c2 - c1 = Right $ map (\i -> (c1 + i, r1 + i)) [1..(c2 - c1 - 1)]
   | otherwise = Left "Not a straight path"
 
 -- | Updates the `coord` and `moved` fields on a `Piece`

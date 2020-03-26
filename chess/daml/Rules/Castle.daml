@@ -5,8 +5,10 @@ daml 1.2
 module Rules.Castle where
 
 import DA.Either
-import DA.Next.Map as M
+import DA.Foldable
 import DA.Optional
+import DA.Next.Map as M
+
 
 import Types
 
@@ -17,31 +19,34 @@ import Rules.Util
 isCastle : MoveData -> Bool
 isCastle md =
   md.piece.tp == King &&
-  abs(md.from._1 - md.to._1) == 2
+  colD md.from md.to == 2
 
 -- | Helper function to apply the special "castle" chess move
 castle : MoveData -> E StateMap
-castle md= do
+castle md = do
   let
     everCheck =
       if md.state.player == White
         then md.state.everCheck._1
         else md.state.everCheck._2
   assertMsg "Move an unmoved, unchecked King to castle"
-    (md.piece.tp == King && md.piece.moved == False && not everCheck)
+    (md.piece.tp == King && not md.piece.moved && not everCheck)
 
-  (rookFromCoord, rookToCoord) <- case md.move.to of
-    Coord{col="G", row=y} -> return (Coord "H" y, Coord "F" y)
-    Coord{col="C", row=y} -> return (Coord "A" y, Coord "D" y)
-    _ -> abort "Invalid target for castle"
-  rookFrom <- intCoord rookFromCoord
-  rookTo <- intCoord rookToCoord
+  (rookFromCoord, rookToCoord) <-
+    case (md.state.player, md.move.to) of
+      (White, G1) -> return (H1, F1)
+      (white, C1) -> return (A1, C1)
+      (Black, G8) -> return (H8, F8)
+      (Black, G1) -> return (A8, C8)
+      _           -> abort "Invalid target for castle"
+  let rookFrom = toIntCoord rookFromCoord
+      rookTo = toIntCoord rookToCoord
   rook <- optionalToEither "Rook position not occupied" $ M.lookup rookFrom md.stateMap
   assertMsg "Castling needs an unmoved rook"
-    (rook.tp == Rook && rook.moved == False)
+    (rook.tp == Rook && not rook.moved)
 
   movePath <- pathBetween md.from rookFrom
-  forA movePath (\c -> assertMsg "Path blocked" (isNone $ M.lookup c md.stateMap))
+  forA_ movePath (\c -> assertMsg "Path blocked" (isNone $ M.lookup c md.stateMap))
 
   return $
     M.insert md.to

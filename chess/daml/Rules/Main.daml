@@ -5,6 +5,7 @@ daml 1.2
 module Rules.Main where
 
 import DA.Either
+import DA.Foldable as F
 import DA.Next.Map as M
 import DA.Optional
 
@@ -55,7 +56,7 @@ checkWin s =
         fst t || (owner p == White && p.tp == King),
         snd t || (owner p == Black && p.tp == King)
       )
-    hasKings = foldl
+    hasKings = F.foldl
       kingFn
       (False, False)
       s.pieces
@@ -66,14 +67,14 @@ checkCheck md stateMap =
   case md.move.check of
     None -> return md.state.everCheck
     Some (p, k) -> do
-      from <- intCoord p
-      to <- intCoord k
+      let from = toIntCoord p
+          to = toIntCoord k
       piece <- optionalToEither "Check from position not occupied" $ M.lookup from stateMap
       king <- optionalToEither "Check from position not occupied" $ M.lookup to stateMap
       assertMsg "Player doesn't own piece" (md.state.player == piece.owner)
       assertMsg "King invalid" (md.state.player /= king.owner && king.tp == King)
       movePath <- path piece.tp md.state.player True from to
-      forA movePath (\c -> assertMsg "Check ath blocked" (isNone $ M.lookup c stateMap))
+      F.forA_ movePath (\c -> assertMsg "Check ath blocked" (isNone $ M.lookup c stateMap))
       if md.state.player == White
         then return (md.state.everCheck._1, True)
         else return (True, md.state.everCheck._2)

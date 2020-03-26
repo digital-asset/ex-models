@@ -67,7 +67,7 @@ moveFn move eds = do
 increment : (Ord a) => a -> [(a, Int)] -> [(a, Int)]
 increment k list =
   let
-    filtered = L.filter (\(a, _) -> a == k) list
+    filtered = L.filter (\(a, _) -> a /= k) list
     elem = find (\(a, _) -> a == k) list
   in case elem of
       None -> (k, 1) :: filtered
