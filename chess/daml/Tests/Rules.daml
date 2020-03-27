@@ -144,22 +144,21 @@ testKingPath = scenario do
   path King White False (3, 3) (3, 4) === Right []
   path King White False (3, 3) (3, 5) === Left "Invalid move"
 
-takeMove : (Either Text GameState) -> (Coord, Coord) -> (Either Text GameState)
-takeMove eg (from, to) = do
+takeMove : (Either Text GameState) -> (Player, Coord, Coord) -> (Either Text GameState)
+takeMove eg (_by, from, to) = do
       g <- eg
       tryMoveInner g $
         ChessMove from to None None
 
 testFoolsMateInner = scenario do
   let
-    moves = [
-      (G2, G4),
-      (E7, E6),
-      (F2, F4),
-      (D8, H4),
-      (E1, F2),
-      (H4, F2)
-      ]
+    moves = [ (White, G2, G4)
+            , (Black, E7, E6)
+            , (White, F2, F4)
+            , (Black, D8, H4)
+            , (White, E1, F2)
+            , (Black, H4, F2)
+            ]
     game = foldl takeMove (Right $ initState ()) moves
 
   case game of
@@ -168,7 +167,7 @@ testFoolsMateInner = scenario do
 
 testBlocked = scenario do
   let
-    moves = [(D1, D7)]
+    moves = [(White, D1, D7)]
     game = foldl takeMove (Right $ initState ()) moves
 
   game === Left "Path blocked"

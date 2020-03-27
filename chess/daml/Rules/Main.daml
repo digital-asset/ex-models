@@ -40,7 +40,7 @@ tryMoveInner state move = do
     player = if state.player == White then Black else White
     pieces = map snd (M.toList newMap)
     everCheck = newEverCheck
-    moves = move :: state.moves
+    moves = (state.player, move) :: state.moves
 
 
 -- | Checks whether either player has won in a given game state

@@ -109,7 +109,7 @@ initPieces White =
   in
   pawns ++ pieces
 
-initState =
+initState () =
   GameState with
     player = White
     pieces = initWhitePieces ++ initBlackPieces
@@ -121,7 +121,7 @@ initState =
 
 initSplitState player =
   SplitGameState with
-    player
+    player = White
     pieces = initPieces player
-    everCheck = False
+    everCheck = False     -- Should you remember if you've ever checked the opponent?
     moves = []

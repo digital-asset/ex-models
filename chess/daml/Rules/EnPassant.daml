@@ -22,7 +22,7 @@ target md =
 
 targetInner : MoveData -> E IntCoord
 targetInner md = do
-  let lastMove = head md.state.moves
+  let (_player, lastMove) = head md.state.moves
       lmTo = toIntCoord lastMove.to
       lmFrom = toIntCoord lastMove.from
   lastMovePiece <- optionalToEither

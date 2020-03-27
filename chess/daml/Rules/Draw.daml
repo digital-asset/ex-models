@@ -33,7 +33,7 @@ checkDraw moves = do
   let maxRepeats = maximum $ map snd fds.stateCounts
   return (maxRepeats >= 3 || fds.idleMoves >= 50)
   where
-    is = initState
+    is = initState ()
 
     ids = DrawState with
       idleMoves = 0

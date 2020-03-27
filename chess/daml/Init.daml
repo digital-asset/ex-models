@@ -8,25 +8,63 @@ import Chess
 import Types
 
 data InitData = InitData with
-  white : Party
+  gameProposalId : ContractId GameProposal
+  gameStartId : ContractId GameStart
+  activeSideOfGameId : ContractId ActiveSideOfGame
+  passiveSideOfGameId : ContractId PassiveSideOfGame
+  white : Party   -- return these as parties so that the tests are easier to desribe
   black : Party
-  game : ContractId GameProposal
+  operator : Party
+  takeMove : Scenario ResultOrNextMove -> (Party, Coord, Coord) -> Scenario ResultOrNextMove
+
+type ResultOrNextMove = Either (ContractId GameResult) GameContractIds
+
+-- Helper to advance play with just a tripe of party, from, to
+createTakeMove : Party -> Scenario ResultOrNextMove -> (Party, Coord, Coord) -> Scenario ResultOrNextMove
+createTakeMove operator seg (player, from, to) =
+  let promote = None
+      check = None
+  in do
+    eg <- seg
+    case eg of
+      Left _ -> abort "Can't continue won game"
+      Right (activeId, _passive) -> do
+        moveId <- submit player do
+                    active <- fetch activeId
+                    exercise activeId Move with
+                      move = ChessMove with ..
+        submit operator do
+          exercise moveId AdvancePlay
+
 
 initData = do
-  white <- getParty "Alice"
-  black <- getParty "Bob"
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
   operator <- getParty "Ref"
 
-  let
-    gameId = GameId with
-      ref = "game"
-      white
-      black
+  let gameId = "game"
+  let takeMove = createTakeMove operator
+
+  gameProposalId <- submit alice do
+    create GameProposal with
+      gameId
+      proposer = alice
+      desiredSide = White
+      opponent = bob
       operator
 
-  game <- submit white do
-    create GameProposal with
-      proposer = white
-      gameId
+  gameStartId <- submit bob do
+    exercise gameProposalId InitGame
+
+  (activeSideOfGameId, passiveSideOfGameId, active, passive) <- submit operator do
+    (activeSideOfGameId, passiveSideOfGameId) <- exercise gameStartId Start
+    active <- fetch activeSideOfGameId
+    passive <- fetch passiveSideOfGameId
+    return ( activeSideOfGameId, passiveSideOfGameId, active, passive)
+  let white = active.player
+      black = passive.player
+
+  assert (white == alice)
+  assert (black == bob)
 
   return InitData with ..

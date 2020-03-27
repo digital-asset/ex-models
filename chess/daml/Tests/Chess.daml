@@ -6,26 +6,8 @@ module Tests.Chess where
 
 import DA.Assert
 
-import Chess
 import Init
 import Types
-
-type ResultOrNextGame = Either (ContractId Result) (ContractId Game)
-
-takeMove : Scenario ResultOrNextGame
-  -> (Party, Coord, Coord)
-  -> Scenario ResultOrNextGame
-takeMove seg (player, from, to) = do
-  eg <- seg
-  case eg of
-    Left _ -> abort "Can't continue won game"
-    Right g -> submit player do
-      exercise g Move with
-        move = ChessMove with
-                          from
-                          to
-                          promote = None
-                          check = None
 
 testEnum = scenario do
   let lst = [0..63]
@@ -36,18 +18,21 @@ testFoolsMate = scenario do
   InitData {..} <- initData
 
   let
-    moves = [
-      (white, G2, G4),
-      (black, E7, E6),
-      (white, F2, F4),
-      (black, D8, H4),
-      (white, E1, F2),
-      (black, H4, F2)
-      ]
+    takeMove = createTakeMove operator
+    moves = [ (white, G2, G4)
+            , (black, E7, E6)
+            , (white, F2, F4)
+            , (black, D8, H4)
+            , (white, E1, F2)
+            , (black, H4, F2)
+            ]
+    game = (activeSideOfGameId, passiveSideOfGameId)
   game <- foldl takeMove (return $ Right game) moves
 
   win <- case game of
     Right _ -> abort "Should be a win"
-    Left win -> submit black do fetch win
+    --Left win -> submit black do fetch win
+    -- TODO: How do I tie this back together so that either party can see the result?
+    Left win -> submit operator do fetch win
 
   win.winner === Some black

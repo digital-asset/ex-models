@@ -19,8 +19,9 @@ import Tests.Chess
 testCastle = scenario do
   InitData {..} <- initData
 
+  let game = (activeSideOfGameId, passiveSideOfGameId)
   submitMustFail white do
-    exercise game Move with
+    exercise activeSideOfGameId Move with
           move = ChessMove with
             from = E1
             to = G1
@@ -38,9 +39,9 @@ testCastle = scenario do
   game <- foldl takeMove (return $ Right game) moves
 
   kingCastle <- case game of
-    Right g -> do
+    Right (a,_) -> do
       submit white do
-        exercise g Move with
+        exercise a Move with
           move = ChessMove with
             from = E1
             to = G1

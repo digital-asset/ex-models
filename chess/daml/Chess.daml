@@ -11,18 +11,19 @@ import Rules.Data
 import Rules.Draw
 import Types
 
--- As part of beginning operator flow
--- we'll refactor this later to create gameId's.
-
+type GameId = Text
 type GameContractIds = (ContractId ActiveSideOfGame, ContractId PassiveSideOfGame)
 
+-- As part of beginning operator flow
+-- we'll refactor this later to create gameId's.
 template GameProposal
   with
     gameId : GameId
     proposer : Party
+    desiredSide : Player
+    opponent : Party
+    operator : Party
   where
-    let opponent = oppositeParty proposer gameId
-        operator = gameId.operator
     signatory proposer
     controller opponent can
       InitGame : ContractId GameStart
@@ -31,52 +32,62 @@ template GameProposal
 
 template GameStart
   with
+    gameId : GameId
     proposer : Party
+    desiredSide : Player
     opponent : Party
     operator : Party
-    gameId : GameId
   where
     signatory proposer, opponent
+    -- signatory operator
     controller operator can
       Start : GameContractIds
         do
-          passiveId <- create PassiveSideOfGame with
-                        player = opponent
-                        passive = Rules.Data.initSplitState Black
-                        ..
+          let oppositePlayer p1 = if p1 == proposer then opponent else proposer
+              (activePlayer, passivePlayer) =
+                case desiredSide of
+                  White -> (proposer, opponent)
+                  Black -> (opponent, proposer)
+
           activeId <- create ActiveSideOfGame with
-                        player = proposer
-                        active = Rules.Data.initSplitState White
-                        ..
+                          player = activePlayer
+                          opponent = oppositePlayer activePlayer
+                          active = Rules.Data.initSplitState White
+                          side = White
+                          ..
+          passiveId <- create PassiveSideOfGame with
+                          player = passivePlayer
+                          opponent = oppositePlayer passivePlayer
+                          passive = Rules.Data.initSplitState Black
+                          side = Black
+                          ..
           return (activeId, passiveId)
 
 template GameResult
   with
     gameId : GameId
+    operator : Party
     game : Optional GameState
     winner : Optional Party
   where
-    signatory gameId.operator
+    signatory operator
 
-type SideKey = (Party, GameId)
+type SideKey = (Party, GameId, Party)
 
 template PassiveSideOfGame
   with
     player : Party
+    side : Player
     operator : Party
+    opponent : Party
     gameId : GameId
     passive : SplitGameState
   where
     signatory player, operator
-    key (operator, gameId) : SideKey
+    key (operator, gameId, player) : SideKey
     maintainer key._1
 
     controller operator can
-      Activate : ContractId ActiveSideOfGame
-        with
-          active : SplitGameState
-        do
-          create ActiveSideOfGame with ..
       End : ContractId GameResult
         with
           winner : Optional Party
@@ -84,21 +95,30 @@ template PassiveSideOfGame
         do
           create GameResult with ..
 
+    controller operator can
+
+      Activate : ContractId ActiveSideOfGame
+        with
+          active : SplitGameState
+        do
+          create ActiveSideOfGame with ..
+
     controller player can
       Resign : ContractId GameResult
         do
-          let opponent = oppositeParty player gameId
           create GameResult with winner = Some opponent, game = None, ..
 
 template ActiveSideOfGame
   with
     player : Party
+    side : Player
     operator : Party
+    opponent : Party
     gameId : GameId
     active : SplitGameState
   where
     signatory player, operator
-    key (operator, gameId) : SideKey
+    key (operator, gameId, player) : SideKey
     maintainer key._1
 
     controller player can
@@ -108,23 +128,32 @@ template ActiveSideOfGame
         do
           create ActiveMove with ..
 
-    controller [operator, player] can
-      MakePassive : ContractId PassiveSideOfGame
-        with
-          move : ChessMove
+      Surrender : ContractId GameResult
         do
-          let passive = active with moves = move :: active.moves
+          create GameResult with winner = Some opponent, game = None, ..
+
+    controller [operator, player] can
+      -- operator can only take this action after receiving a unique Move,
+      -- player is necessary to be signatory on Passive
+      Inactivate : ContractId PassiveSideOfGame
+        with
+          passive : SplitGameState
+        do
           create PassiveSideOfGame with ..
+      EndActive : ()
+        do return ()
 
 template ActiveMove
   with
     player : Party
     operator : Party
     gameId : GameId
-    active : SplitGameState
+    opponent : Party
     move : ChessMove
+    active : SplitGameState
   where
     signatory operator, player
+    signatory operator--, player
 
     -- need a unique key to prevent double moves.
     key (operator, gameId, move) : (Party, GameId, ChessMove)
@@ -133,25 +162,30 @@ template ActiveMove
     controller operator can
       AdvancePlay : Either (ContractId GameResult) GameContractIds
         do
-          (passiveId, passiveState) <- fetchByKey @PassiveSideOfGame (operator, gameId)
-          (activeId, activeState) <- fetchByKey @ActiveSideOfGame (operator, gameId)
-          let joinedState = joinGameStates active.player active passiveState.passive
-          case tryMove joinedState move of
+          (activeId, activeState) <- fetchByKey @ActiveSideOfGame (operator, gameId, player)
+          (passiveId, passiveState) <- fetchByKey @PassiveSideOfGame (operator, gameId, opponent)
+          let currentState = joinGameStates active.player active passiveState.passive
+              moveSide = activeState.side
+          case tryMove currentState move of
             Winner player ->
-              let winner =  if player == White then gameId.white else gameId.black in
+              let winner = if player == moveSide then activeState.player else activeState.opponent in
               do
+                let stateWithWinningMove = currentState with moves = (moveSide, move) :: currentState.moves
                 win <- exercise passiveId End with
                             winner = Some winner
-                            game = Some joinedState
-                -- TODO: End the activeState too
+                            game = Some stateWithWinningMove
+                exercise activeId EndActive
                 return $ Left win
             Error e -> abort e
             NewState newJoinedState ->
               let whiteState = splitGameStateOfPlayer White newJoinedState
                   blackState = splitGameStateOfPlayer Black newJoinedState
-                  active = if move.by == White then blackState else whiteState
+                  (active, passive) =
+                    case moveSide of
+                      White -> (blackState, whiteState)
+                      Black -> (whiteState, blackState)
               in
               do
-                passiveId <- exercise activeId MakePassive with move
-                activeId <- exercise passiveId Activate with ..
-                return $ Right (activeId, passiveId)
+                passiveId' <- exercise activeId Inactivate with passive
+                activeId' <- exercise passiveId Activate with active
+                return $ Right (activeId', passiveId')
