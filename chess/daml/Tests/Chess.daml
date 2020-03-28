@@ -18,7 +18,6 @@ testFoolsMate = scenario do
   InitData {..} <- initData
 
   let
-    takeMove = createTakeMove operator
     moves = [ (white, G2, G4)
             , (black, E7, E6)
             , (white, F2, F4)
@@ -31,8 +30,6 @@ testFoolsMate = scenario do
 
   win <- case game of
     Right _ -> abort "Should be a win"
-    --Left win -> submit black do fetch win
-    -- TODO: How do I tie this back together so that either party can see the result?
     Left win -> submit operator do fetch win
 
   win.winner === Some black
