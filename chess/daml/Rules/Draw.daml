@@ -25,13 +25,25 @@ data DrawState = DrawState with
   stateCounts : [(OrdGameState, Int)]
   gameState : GameState
 
+data DrawType =
+  Stalemate
+  | ThreefoldRepetition
+  | FiftyMoveRule
+
+checkStaleMate : GameState -> Bool
+checkStateMate gs =
+
 -- | Checkdraw checks the 50 move rule and threefold repetition by
 -- | Replaying the whole game
-checkDraw : [ChessMove] -> E Bool
+checkDraw : [ChessMove] -> E (Optional DrawType)
 checkDraw moves = do
   fds <- efds
   let maxRepeats = maximum $ map snd fds.stateCounts
-  return (maxRepeats >= 3 || fds.idleMoves >= 50)
+  if maxRepeats >= 3
+  then return $ Some ThreefoldRepetition
+  else if fds.idleMoves >= 50
+       then return $ Some FiftyMoveRule
+       else return None
   where
     is = initState ()
 
