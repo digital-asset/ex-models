@@ -24,7 +24,7 @@ simpleMove md = do
   let
     target = fromOptional md.to capture
     isCapture = isSome capture
-  movePath <- path md.piece.tp md.state.player isCapture md.from md.to
+  movePath <- path md.piece.tp md.state.side isCapture md.from md.to
 
   forA_ movePath (\c -> assertMsg "Path blocked" (isNone $ M.lookup c md.stateMap))
 
@@ -48,5 +48,5 @@ checkCapture md = do
       piece <- M.lookup md.to md.stateMap
       return piece.owner
 
-  assertMsg "Can't capture own piece" (toOwner /= Some md.state.player)
+  assertMsg "Can't capture own piece" (toOwner /= Some md.state.side)
   return $ fmap toIntCoord tgtCoord

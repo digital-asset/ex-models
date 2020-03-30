@@ -16,7 +16,7 @@ import Rules.Main
 import Rules.Move
 
 data OrdGameState = OrdGameState with
-  player : Player
+  side : Side
   pieces : Map Coord Piece
     deriving (Eq, Show, Ord)
 
@@ -25,13 +25,6 @@ data DrawState = DrawState with
   stateCounts : [(OrdGameState, Int)]
   gameState : GameState
 
-data DrawType =
-  Stalemate
-  | ThreefoldRepetition
-  | FiftyMoveRule
-
-checkStaleMate : GameState -> Bool
-checkStateMate gs =
 
 -- | Checkdraw checks the 50 move rule and threefold repetition by
 -- | Replaying the whole game
@@ -59,8 +52,8 @@ checkDraw moves = do
 
 toOrd : GameState -> OrdGameState
 toOrd gs = OrdGameState with
-  player = gs.player
-  pieces = M.fromList $ map (\p -> (p.coord, p)) gs.pieces
+  side = gs.side
+  pieces = gs.pieces
 
 moveFn : ChessMove -> E DrawState -> E DrawState
 moveFn move eds = do

@@ -61,7 +61,7 @@ mapState s =
   foldl
     work
     (Right M.empty)
-    s.pieces
+    (fmap snd $ M.toList s.pieces)
   where
     work e p =
       case e of
@@ -81,10 +81,10 @@ toMoveData state move = do
       to = toIntCoord move.to
   stateMap <- mapState state
   piece <- optionalToEither "From position not occupied" $ M.lookup from stateMap
-  assertMsg "Player doesn't own piece" (state.player == piece.owner)
+  assertMsg "Player doesn't own piece" (state.side == piece.owner)
   return $ MoveData with ..
 
-initPieces : Player -> [Piece]
+initPieces : Side -> [Piece]
 initPieces Black =
   let mirror p = p with
           coord = toCoord (flipRow (toIntCoord p.coord))
@@ -109,19 +109,22 @@ initPieces White =
   in
   pawns ++ pieces
 
+toPieceMap : [Piece] -> PieceMap
+toPieceMap = M.fromList . fmap (\p -> (p.coord, p))
+
 initState () =
   GameState with
-    player = White
-    pieces = initWhitePieces ++ initBlackPieces
+    side = White
+    pieces = toPieceMap $ initWhitePieces ++ initBlackPieces
     everCheck = EverCheck with white = False, black = False
     moves = []
   where
     initWhitePieces = initPieces White
     initBlackPieces = initPieces Black
 
-initSplitState player =
-  SplitGameState with
-    player = White
-    pieces = initPieces player
-    everCheck = False     -- Should you remember if you've ever checked the opponent?
+initSplitState side =
+  GameState with
+    side = White
+    pieces = toPieceMap $ initPieces side
+    everCheck = EverCheck with white = False, black = False
     moves = []

@@ -5,7 +5,6 @@ daml 1.2
 module Types where
 
 import DA.Next.Map qualified as M
-import DA.Optional
 
 data PieceType =
   Pawn | Rook | Knight | Bishop | Queen | King
@@ -48,6 +47,7 @@ data EverCheck = EverCheck with
 data ChessMove = ChessMove with
   from : Coord
   to : Coord
+  by : Side
   promote : Optional PieceType
   check : Optional (Coord, Coord)
     deriving (Eq, Show)
@@ -55,54 +55,39 @@ data ChessMove = ChessMove with
 type PieceMap = M.Map Coord Piece
 
 data GameState = GameState with
-  player : Side                 -- who's turn is it
-  --pieces : [Piece]                -- pieces left on the board.
-  pieces : PieceMap                -- pieces left on the board.
-  everCheck : EverCheck           -- has either side been checked
-  moves : [(Side, ChessMove)]   -- reverse ordered list of moves.
-    deriving (Eq, Show)
-
---foldOverPossibleMoves : (a -> ChessMove -> a) -> a -> GameState -> a
---foldOverPossibleMoves f i gs = foldl i f' gs.pieces
---  where f' i piece =
-
--- In Fog-Of-War variant each player has this.
-data SplitGameState = SplitGameState with
-  player : Side
-  pieces : [Piece]
-  everCheck : Bool
-  moves : [ChessMove]
+  side : Side                 -- who's turn is it
+  pieces : PieceMap           -- pieces on the board.
+  everCheck : EverCheck       -- has either side been checked
+  moves : [ChessMove]         -- reverse ordered list of moves.
     deriving (Eq, Show)
 
 -- this is a bit naive at-the-moment, in real fog-of-war white would be able to see black pieces that it is threatening.
-splitGameStateOfSide : Side -> GameState -> SplitGameState
-splitGameStateOfSide player gs =
-  SplitGameState with
-    player = gs.player
-    pieces = filter (\p -> p.owner == player) gs.pieces
-    everCheck = case player of
-                  White -> gs.everCheck.white
-                  Black -> gs.everCheck.black
-    moves = mapOptional (\(p,m) -> if p == player then Some m else None) gs.moves
+splitGameStateOfSide : Side -> GameState -> GameState
+splitGameStateOfSide side gs =
+  gs with
+    pieces = M.filter (\ p -> p.owner == side) gs.pieces
+    moves = filter (\m -> m.by == side) gs.moves
 
 mergeMoves acc (w::ws) (b::bs) = mergeMoves (b::(w::acc)) ws bs
 mergeMoves acc [w]     []      = reverse (w :: acc) -- white may have an extra move
 mergeMoves acc []      []      = reverse acc
 mergeMoves _   _       _       = error "More black moves than white ones!"
 
-joinGameStates : Side -> SplitGameState -> SplitGameState -> GameState
-joinGameStates turn s1 s2 =
-  let (ws, bs) = case s1.player of
-              White -> (s1, s2)
-              Black -> (s2, s1)
-  in
-  GameState with
-    player = turn
-    pieces = s1.pieces ++ s2.pieces
-    everCheck = EverCheck with white = ws.everCheck; black = bs.everCheck
-    moves = mergeMoves [] (fmap (\m -> (White,m)) ws.moves) (fmap (\m ->(Black,m)) bs.moves)
+joinGameStates : GameState -> GameState -> GameState
+joinGameStates ws bs =
+  ws with
+    pieces = M.union ws.pieces bs.pieces
+    moves = mergeMoves [] ws.moves bs.moves
+
+data DrawType
+  = PlayerDraw Side
+  | Stalemate
+  | ThreefoldRepetition
+  | FiftyMoveRule
+    deriving (Eq, Show)
 
 data MoveResult
-  = Winner Side
+  = DrawOrWinner (Either DrawType Side)
   | NewState GameState
   | Error Text
+    deriving (Eq, Show)

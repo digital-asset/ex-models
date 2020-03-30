@@ -32,4 +32,4 @@ testFoolsMate = scenario do
     Right _ -> abort "Should be a win"
     Left win -> submit operator do fetch win
 
-  win.winner === Some black
+  win.drawOrWinner === Right black

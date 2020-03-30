@@ -144,7 +144,7 @@ testKingPath = scenario do
   path King White False (3, 3) (3, 4) === Right []
   path King White False (3, 3) (3, 5) === Left "Invalid move"
 
-takeMove : (Either Text GameState) -> (Player, Coord, Coord) -> (Either Text GameState)
+takeMove : (Either Text GameState) -> (Side, Coord, Coord) -> (Either Text GameState)
 takeMove eg (_by, from, to) = do
       g <- eg
       tryMoveInner g $

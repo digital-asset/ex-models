@@ -24,7 +24,7 @@ tryMove state move =
     Left e -> Error e
     Right ns -> case checkWin ns of
       None -> NewState ns
-      Some p -> Winner p
+      Some p -> DrawOrWinner (Right p)
 
 tryMoveInner : GameState -> ChessMove -> E GameState
 tryMoveInner state move = do
@@ -37,14 +37,14 @@ tryMoveInner state move = do
   newEverCheck <- checkCheck md newMap
 
   return state with
-    player = if state.player == White then Black else White
-    pieces = map snd (M.toList newMap)
+    side = if state.side == White then Black else White
+    pieces = M.fromList $ fmap (\(ic, p) -> (toCoord ic, p)) $ M.toList newMap
     everCheck = newEverCheck
-    moves = (state.player, move) :: state.moves
+    moves = move :: state.moves
 
 
 -- | Checks whether either player has won in a given game state
-checkWin : GameState -> Optional Player
+checkWin : GameState -> Optional Side
 checkWin s =
     case hasKings of
       (True, True) -> None
@@ -71,10 +71,10 @@ checkCheck md stateMap =
           to = toIntCoord k
       piece <- optionalToEither "Check from position not occupied" $ M.lookup from stateMap
       king <- optionalToEither "Check from position not occupied" $ M.lookup to stateMap
-      assertMsg "Player doesn't own piece" (md.state.player == piece.owner)
-      assertMsg "King invalid" (md.state.player /= king.owner && king.tp == King)
-      movePath <- path piece.tp md.state.player True from to
+      assertMsg "Player doesn't own piece" (md.state.side == piece.owner)
+      assertMsg "King invalid" (md.state.side /= king.owner && king.tp == King)
+      movePath <- path piece.tp md.state.side True from to
       F.forA_ movePath (\c -> assertMsg "Check ath blocked" (isNone $ M.lookup c stateMap))
-      if md.state.player == White
+      if md.state.side == White
         then return $ md.state.everCheck with black = True
         else return $ md.state.everCheck with white = True

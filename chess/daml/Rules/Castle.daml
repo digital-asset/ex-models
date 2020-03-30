@@ -26,14 +26,14 @@ castle : MoveData -> E StateMap
 castle md = do
   let
     everCheck =
-      if md.state.player == White
+      if md.state.side == White
         then md.state.everCheck.white
         else md.state.everCheck.black
   assertMsg "Move an unmoved, unchecked King to castle"
     (md.piece.tp == King && not md.piece.moved && not everCheck)
 
   (rookFromCoord, rookToCoord) <-
-    case (md.state.player, md.move.to) of
+    case (md.state.side, md.move.to) of
       (White, G1) -> return (H1, F1)
       (white, C1) -> return (A1, C1)
       (Black, G8) -> return (H8, F8)

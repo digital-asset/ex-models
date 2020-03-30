@@ -16,7 +16,7 @@ template GameProposal
   with
     gameId : GameId
     proposer : Party
-    desiredSide : Player
+    desiredSide : Side
     opponent : Party
     operator : Party
   where
@@ -33,7 +33,7 @@ template GameAccept
   with
     gameId : GameId
     proposer : Party
-    desiredSide : Player
+    desiredSide : Side
     opponent : Party
     operator : Party
   where
@@ -47,7 +47,7 @@ template Game
   with
     gameId : GameId
     proposer : Party
-    desiredSide : Player
+    desiredSide : Side
     opponent : Party
     operator : Party
   where
@@ -57,20 +57,20 @@ template Game
     controller operator can
       nonconsuming Begin : GameContractIds
         do
-          let (activePlayer, passivePlayer) =
+          let (activeSide, passiveSide) =
                 case desiredSide of
                   White -> (proposer, opponent)
                   Black -> (opponent, proposer)
 
           activeId <- create ActiveSideOfGame with
-                          player = activePlayer
-                          opponent = passivePlayer
+                          player = activeSide
+                          opponent = passiveSide
                           active = Rules.Data.initSplitState White
                           side = White
                           ..
           passiveId <- create PassiveSideOfGame with
-                          player = passivePlayer
-                          opponent = activePlayer
+                          player = passiveSide
+                          opponent = activeSide
                           passive = Rules.Data.initSplitState Black
                           side = Black
                           ..
@@ -79,7 +79,7 @@ template Game
       End : ContractId GameResult
         with
           game : Optional GameState
-          winner : Optional Party
+          drawOrWinner : Either DrawType Party
         do
           create GameResult with ..
 
@@ -90,7 +90,7 @@ template GameResult
     gameId : GameId
     operator : Party
     game : Optional GameState
-    winner : Optional Party
+    drawOrWinner : Either DrawType Party
   where
     signatory proposer, opponent, operator
 
@@ -99,11 +99,11 @@ type SideKey = (Party, GameId, Party)
 template PassiveSideOfGame
   with
     player : Party
-    side : Player
+    side : Side
     operator : Party
     opponent : Party
     gameId : GameId
-    passive : SplitGameState
+    passive : GameState
   where
     signatory player, operator
     key (operator, gameId, player) : SideKey
@@ -112,7 +112,7 @@ template PassiveSideOfGame
     controller operator can
       Activate : ContractId ActiveSideOfGame
         with
-          active : SplitGameState
+          active : GameState
         do create ActiveSideOfGame with ..
       DeclareWinnerPassive : ContractId GameResult --
         with
@@ -129,11 +129,11 @@ template PassiveSideOfGame
 template ActiveSideOfGame
   with
     player : Party
-    side : Player
+    side : Side
     operator : Party
     opponent : Party
     gameId : GameId
-    active : SplitGameState
+    active : GameState
   where
     signatory player, operator
     key (operator, gameId, player) : SideKey
@@ -154,7 +154,7 @@ template ActiveSideOfGame
       -- operator can only take this action after receiving a unique Move,
       Inactivate : ContractId PassiveSideOfGame
         with
-          passive : SplitGameState
+          passive : GameState
         do
           create PassiveSideOfGame with ..
 
@@ -182,6 +182,7 @@ template DrawRequest
     operator : Party
     gameId : GameId
     opponent : Party
+    side : Side
     -- reveal : Bool -- add?
   where
     signatory operator, player
@@ -199,6 +200,7 @@ template AcceptedDraw
     operator : Party
     gameId : GameId
     opponent : Party
+    side : Side
   where
     signatory player, opponent
     key (operator, gameId) : (Party, GameId)
@@ -242,16 +244,24 @@ template OperatorRole
           -- figure out global state
           (activeId, activeState) <- fetchByKey @ActiveSideOfGame (operator, gameId, player)
           (passiveId, passiveState) <- fetchByKey @PassiveSideOfGame (operator, gameId, opponent)
-          let gameState = joinGameStates activeState.side activeState.active passiveState.passive
+          let gameState = joinGameStates activeState.active passiveState.passive
               moveSide = activeState.side
           case tryMove gameState move of
             -- determine winner
             Winner player ->
               let winner = if player == moveSide then activeState.player else activeState.opponent in
-              let game = (gameState with moves = (moveSide, move) :: gameState.moves) in
+              let game = (gameState with moves = move :: gameState.moves) in
               do
                 (gameStartId, gameStart) <- fetchByKey @Game (operator, gameId)
-                gameResultId <- exercise gameStartId End with game = Some game, winner = Some winner, ..
+                gameResultId <- exercise gameStartId End with game = Some game, drawOrWinner = Right winner, ..
+                exercise activeId DeclareWinnerActive with result = gameResultId
+                exercise passiveId DeclareWinnerPassive with result = gameResultId
+                return $ Left gameResultId
+            -- determine draw
+            Draw drawType ->
+              do
+                (gameStartId, gameStart) <- fetchByKey @Game (operator, gameId)
+                gameResultId <- exercise gameStartId End with game = None, drawOrWinner = Left drawType, ..
                 exercise activeId DeclareWinnerActive with result = gameResultId
                 exercise passiveId DeclareWinnerPassive with result = gameResultId
                 return $ Left gameResultId
@@ -259,8 +269,8 @@ template OperatorRole
             Error e -> abort e
             -- alternate states
             NewState newJoinedState ->
-              let whiteState = splitGameStateOfPlayer White newJoinedState
-                  blackState = splitGameStateOfPlayer Black newJoinedState
+              let whiteState = splitGameStateOfSide White newJoinedState
+                  blackState = splitGameStateOfSide Black newJoinedState
                   (active, passive) =
                     case moveSide of
                       White -> (blackState, whiteState)
@@ -276,13 +286,12 @@ template OperatorRole
         do
           (sId, surrender) <- fetchByKey @Surrender (operator, gameId)
           (gameStartId, _gameStart) <- fetchByKey @Game (operator, gameId)
-          let winner = Some surrender.opponent
           archive sId
-          exercise gameStartId End with game = None, winner = winner, ..
+          exercise gameStartId End with game = None, drawOrWinner = Right surrender.opponent, ..
 
       nonconsuming AcknowledgeAcceptedDraw : ContractId GameResult
         do
           (adId, acceptedDraw) <- fetchByKey @AcceptedDraw (operator, gameId)
           (gameStartId, _gameStart) <- fetchByKey @Game (operator, gameId)
           archive adId
-          exercise gameStartId End with game = None, winner = None, ..
+          exercise gameStartId End with game = None, drawOrWinner = Left (PlayerDraw acceptedDraw.side)

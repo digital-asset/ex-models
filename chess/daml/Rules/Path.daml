@@ -10,7 +10,7 @@ import Rules.Data
 import Rules.Util
 
 -- | Path of move: Bool is EnPassant
-path : PieceType -> Player -> Bool -> IntCoord -> IntCoord -> E [IntCoord]
+path : PieceType -> Side -> Bool -> IntCoord -> IntCoord -> E [IntCoord]
 path _ _ _ i1 i2
   | i1 == i2 = abort "Null move is not valid"
 path Pawn White True i1 i2 = do

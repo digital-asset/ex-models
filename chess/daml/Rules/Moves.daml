@@ -4,8 +4,12 @@
 daml 1.2
 module Rules.Moves where
 
+import DA.Next.Map qualified as M
+import DA.Optional
+
 import Types
 import Rules.Data
+
 
 onBoard1 : Int -> Bool
 onBoard1 c = 0 <= c && c <= 7
@@ -25,72 +29,86 @@ data Direction = Up
                | RightUp
                | Right_
                | RightDown
-               | Down
+               | Down_
                | LeftDown
                | Left_
                | LeftUp
     deriving (Eq, Enum)
 
-move : IntCoord -> Direction -> IntCoord
-move (c, r)  Up        = (c,     r + 1)
-move (c, r)  RightUp   = (c + 1, r + 1)
-move (c, r)  Right_    = (c + 1, r    )
-move (c, r)  DownRight = (c + 1, r - 1)
-move (c, r)  Down      = (c,     r - 1)
-move (c, r)  DownLeft  = (c - 1, r - 1)
-move (c, r)  Left_     = (c - 1, r)
-move (c, r)  UpLeft    = (c - 1, r + 1)
+moveD : IntCoord -> Direction -> IntCoord
+moveD (c, r)  Up        = (c,     r + 1)
+moveD (c, r)  RightUp   = (c + 1, r + 1)
+moveD (c, r)  Right_    = (c + 1, r    )
+moveD (c, r)  RightDown = (c + 1, r - 1)
+moveD (c, r)  Down_     = (c,     r - 1)
+moveD (c, r)  LeftDown  = (c - 1, r - 1)
+moveD (c, r)  Left_     = (c - 1, r)
+moveD (c, r)  LeftUp    = (c - 1, r + 1)
+
+-- It would be easier to define many of these smaller functions within the
+-- possibleMoves context so that they can refer to the piece.owner and gamestate
+occupied : GameState -> IntCoord -> Bool
+occupied gs ic = M.member (toCoord ic) gs.pieces
+
+atPos : GameState -> IntCoord -> Optional Piece
+atPos gs ic = M.lookup (toCoord ic) gs.pieces
+
+oppositeAt : Side -> GameState -> IntCoord -> Optional Piece
+oppositeAt side gs ic = atPos gs ic >>= \p -> if p.owner /= side then Some p else None
 
 type MoveOrCapture = Either IntCoord Piece
 
-possibleMoves : Piece -> GameState -> [MoveOrCapture]
-possibleMoves pi gs =
-    let occupied ic = M.member (toCoord ic) gs.pieces
-        atPos ic = M.lookup (toCoord ic) gs.pieces
-        oppositeAt ic = atPos ic >>= \p -> if p.owner /= pi.Side then Some p else None
+notOccupied : GameState -> [IntCoord] -> [MoveOrCapture]
+notOccupied gs = fmap Left . filter (not . occupied gs) . filter onBoard
 
-        notOccupied : [IntCoord] -> [MoveOrCapture]
-        notOccupied =  fmap Left . filter (not . occupied) . filter onBoard
+onlyCapture : Side -> GameState -> IntCoord -> Optional MoveOrCapture
+onlyCapture side gs ic = oppositeAt side gs ic >>= \p -> Some $ Right p
 
-        onlyCapture : IntCoord -> Optional MoveOrCapture
-        onlyCapture ic = oppositeAt ic >>= Right
+onlyCaptures : Side -> GameState -> [IntCoord] -> [MoveOrCapture]
+onlyCaptures side gs = mapOptional (onlyCapture side gs) . filter onBoard
 
-        onlyCaptures : [IntCoord] -> [MoveOrCapture]
-        onlyCaptures = mapOptional onlyCapture . filter onBoard
+moveOrCapture : Side -> GameState -> IntCoord -> Optional MoveOrCapture
+moveOrCapture side gs ic =
+    case atPos gs ic of
+        None -> Some $ Left ic
+        Some p -> if p.owner == side
+                  then None
+                  else Some $ Right p
 
-        moveOrCapture : IntCoord -> Optional MoveOrCapture
-        moveOrCapture ic = case atPos ic of
-                            None -> Some $ Left ic
-                            Some p -> if p.owner == pi.Side then None else Some $ Right p
+movesOrCaptures : Side -> GameState -> [IntCoord] -> [MoveOrCapture]
+movesOrCaptures side gs = mapOptional (moveOrCapture side gs) . filter onBoard
 
-        movesOrCaptures : [IntCoord] -> [MoveOrCapture]
-        movesOrCaptures = mapOptional moveOrCaputre . filter onBoard
-
-        follow : IntCoord -> Direction -> [MovesOrCaptures]
-        follow ic d = if not $ onBoard nic
+follow : Side -> GameState -> IntCoord -> Direction -> [MoveOrCapture]
+follow side gs ic d =
+    let nic = moveD ic d in
+    if not $ onBoard nic
+    then []
+    else case atPos gs nic of
+            None -> Left nic :: follow side gs nic d
+            Some p -> if p.owner == side
                       then []
-                      else case atPos nic of
-                            None -> Left nic :: follow nic d
-                            Some p -> if p.owner == pi.Side
-                                      then []
-                                      else [Right p]
-            where nic = move ic d
+                      else [Right p]
 
-        followDs : IntCoord -> [Direction] -> [MovesOrCaptures]
-        followDs ic = fmap (follow ic)
+followDs : Side -> GameState -> IntCoord -> [Direction] -> [MoveOrCapture]
+followDs side gs ic ds = concatMap (follow side gs ic) ds
 
-        ic = toIntCoord t.coord
+possibleMoves : Piece -> GameState -> [MoveOrCapture]
+possibleMoves piece gs =
+    let ps = piece.owner
+
+        ic = toIntCoord piece.coord
     in
-    case p.tp of
+    case piece.tp of
         Pawn ->
             let (c, r) = ic
-                checkEnPassant : Unit -> [MoveOrCapture]
+                checkEnPassant : () -> [MoveOrCapture]
                 checkEnPassant () =
                     case gs.moves of
                         m :: _ ->
-                            let oppositeSide = m.side /= pi.side
-                                movedTwo = rowD (toIntCoord m.from) (toIntCoord m.to)
-                                pastMyAttacks = fst $ (toIntCoord m.from) `elem` [ (c-1),(c+1) ]
+                            let oppositeSide = m.by /= piece.owner
+                                movedTwo = rowD (toIntCoord m.from) (toIntCoord m.to) == 2
+                                colCoord = fst $ toIntCoord m.from
+                                pastMyAttacks = colCoord == (c-1) || colCoord == (c+1)
                                 lastMovedPiece = M.lookup m.to gs.pieces
                             in
                             case lastMovedPiece of
@@ -100,31 +118,30 @@ possibleMoves pi gs =
                                 None -> []
                         _ -> []
             in
-            case (t.owner, r) of
+            case (piece.owner, r) of
                 (White, 0)  -> error "Pawns can't move backwards"
-                (White, 1)  -> notOccupied [(c, r+1), (c, r+2)] ++
-                               onlyCaptures [(c-1,r+1), (c+1,r+1)]
-                (White, 5)  -> notOccupied [(c, r + 1)] ++
-                               onlyCaptures [(c-1,r+1), (c+1,r+1)] ++
-                               checkEnPessant ()
+                (White, 1)  -> notOccupied gs [(c, r+1), (c, r+2)] ++
+                               onlyCaptures ps gs[(c-1,r+1), (c+1,r+1)]
+                (White, 5)  -> notOccupied gs [(c, r + 1)] ++
+                               onlyCaptures ps gs[(c-1,r+1), (c+1,r+1)] ++
+                               checkEnPassant ()
                 (White, 7)  -> error "Must promote before end."
-                (White, _)  -> notOccupied [(c, r + 1)] ++
-                               onlyCaptures [(c-1,r+1), (c+1,r+1)]
+                (White, _)  -> notOccupied gs [(c, r + 1)] ++
+                               onlyCaptures ps gs[(c-1,r+1), (c+1,r+1)]
 
                 (Black, 7)  -> error "Pawns can't move backwards"
-                (Black, 6)  -> notOccupied [(c, r - 1), (c, r - 2)] ++
-                               onlyCaptures [(c-1,r-1), (c+1,r-1)]
-                (Black, 4)  -> notOccupied [(c, r - 1)] ++
-                               onlyCaptures [(c-1,r-1), (c+1,r-1)] ++
-                               checkEnPessant ()
+                (Black, 6)  -> notOccupied gs [(c, r - 1), (c, r - 2)] ++
+                               onlyCaptures ps gs[(c-1,r-1), (c+1,r-1)]
+                (Black, 4)  -> notOccupied gs [(c, r - 1)] ++
+                               onlyCaptures ps gs[(c-1,r-1), (c+1,r-1)] ++
+                               checkEnPassant ()
                 (Black, 0)  -> error "Must promote before end."
-                (Black, _)  -> notOccupied [(c, r - 1)] ++
-                               onlyCaptures [(c-1,r-1), (c+1,r-1)]
+                (Black, _)  -> notOccupied gs [(c, r - 1)] ++
+                               onlyCaptures ps gs[(c-1,r-1), (c+1,r-1)]
 
-        Knight -> movesOrCaptures $ knightPositions ic
-        Bishop -> followDs ic [RightUp, DownRight, DownLeft, UpLeft]
-        Rook -> followDs ic [Up, Right_, Down, Left_]
-        Queen -> followDs ic [Up .. ]
-        -- TODO: consider castle
-        King -> movesOrCaptures $ filter onBoard . fmap (move ic) [Up .. ]
-
+        Knight -> movesOrCaptures ps gs $ knightPositions ic
+        Bishop -> followDs ps gs ic [RightUp, RightDown, LeftDown, LeftUp]
+        Rook -> followDs ps gs ic [Up, Right_, Down_, Left_]
+        Queen -> followDs ps gs ic [Up .. ]
+        -- TODO: add castling
+        King -> movesOrCaptures ps gs $ filter onBoard $ fmap (moveD ic) [Up .. ]

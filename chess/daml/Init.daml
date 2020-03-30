@@ -20,10 +20,11 @@ data InitData = InitData with
 type ResultOrNextMove = Either (ContractId GameResult) GameContractIds
 
 -- Helper to advance play with just a tripe of party, from, to
-createTakeMove : Party -> ContractId OperatorRole -> Scenario ResultOrNextMove -> (Party, Coord, Coord) -> Scenario ResultOrNextMove
-createTakeMove operator orId seg (player, from, to) =
+createTakeMove : Party -> ContractId OperatorRole -> (Party -> Side) -> Scenario ResultOrNextMove -> (Party, Coord, Coord) -> Scenario ResultOrNextMove
+createTakeMove operator orId playerToSide seg (player, from, to) =
   let promote = None
       check = None
+      by = playerToSide player
   in do
     eg <- seg
     case eg of
@@ -54,8 +55,6 @@ initData = do
   gId <- submit operator do exercise gameAcceptId Start
   operatorRole <- submit operator do create OperatorRole with ..
 
-  let takeMove = createTakeMove operator operatorRole
-
   (activeSideOfGameId, passiveSideOfGameId, active, passive) <- submit operator do
     (activeSideOfGameId, passiveSideOfGameId) <- exercise gId Begin
     active <- fetch activeSideOfGameId
@@ -67,4 +66,6 @@ initData = do
   assert (white == alice)
   assert (black == bob)
 
+  let playerToSide p = if p == alice then White else Black
+  let takeMove = createTakeMove operator operatorRole playerToSide
   return InitData with ..
