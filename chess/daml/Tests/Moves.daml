@@ -1,0 +1,153 @@
+-- Copyright (c) 2020 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+module Tests.Moves where
+
+import DA.List
+import DA.Optional
+import DA.Next.Map qualified as M
+
+import Types
+import Rules.Data
+import Rules.Moves
+
+type Pmc = (Piece,MoveOrCapture)
+
+allMoves : Side -> GameState -> [Pmc]
+allMoves = foldMoves (\acc p mc -> (p,mc) :: acc) []
+
+regularMove : MoveOrCapture -> Bool
+regularMove (Move _)  = True
+regularMove _         = False
+
+movesOfPiece : PieceType -> [Pmc] -> ([Pmc], [Pmc])
+movesOfPiece piece = partition (\(p,_) -> p.tp == piece)
+
+openingMoves side = scenario do
+
+  let initGameState = initState ()
+      moves = allMoves White initGameState
+      --_ = trace (show moves) ()
+      (pawnMoves, rest) = movesOfPiece Pawn moves
+      (knightMoves, rest') = movesOfPiece Knight rest
+
+  assertMsg "In the beginning each pawn can move 2 places." (length pawnMoves == 8 * 2)
+  assertMsg "In the beginning each knight can move 2 places." (length knightMoves == 2 * 2)
+  assertMsg "And nothing else!" (null rest')
+  assertMsg "None of the moves is a capture!" (all (\(_, m) -> regularMove m ) moves)
+
+openingWhite = openingMoves White
+openingBlack = openingMoves Black
+
+-- Since the move processing logic depends on possible move determination logic
+-- we'll construct the piece map manually.
+
+advance : GameState -> ChessMove -> GameState
+advance gs mv =
+  let pieceAt : Coord -> GameState -> Piece -- For those times when we know
+      pieceAt coord gs =
+        case M.lookup coord gs.pieces of
+          None -> error $ "You thought there was something at " <> show coord
+          Some p -> p
+      currentPiece = pieceAt mv.from gs
+      raisedPieces = M.delete currentPiece.coord gs.pieces
+      movedPiece = currentPiece with coord = mv.to
+      placedPieces = M.insert movedPiece.coord movedPiece raisedPieces
+  in
+  gs with
+      pieces = placedPieces
+      moves = mv :: gs.moves
+
+kingsPawnMove : ChessMove
+kingsPawnMove = ChessMove with
+                  from = E2
+                  to = E4
+                  by = White
+                  promote = None
+                  check = None
+
+kingsPawnOpening = scenario do
+
+  let initGameState = initState ()
+      kingsPawnGameState = advance initGameState kingsPawnMove
+      blackMoves = allMoves Black kingsPawnGameState
+      --_ = trace (show blackMoves) ()
+      (pawnMoves, rest1) = movesOfPiece Pawn blackMoves
+      (knightMoves, rest2) = movesOfPiece Knight rest1
+
+  -- situation for black doesn't change!
+  assertMsg "In the beginning each black pawn can move 2 places." (length pawnMoves == 8 * 2)
+  assertMsg "In the beginning each black knight can move 2 places." (length knightMoves == 2 * 2)
+  assertMsg "And no more black moves.!" (null rest2)
+  assertMsg "None of the black moves is a capture!" (all (\(_, m) -> regularMove m) blackMoves)
+
+  let whiteMoves = allMoves White kingsPawnGameState
+      --_ = trace (show whiteMoves) ()
+      (pawnMoves, rest1) = movesOfPiece Pawn whiteMoves
+      (knightMoves, rest2) = movesOfPiece Knight rest1
+      --_ = trace (show knightMoves) ()
+      (bishopMoves, rest3) = movesOfPiece Bishop rest2
+      (queenMoves, rest4) = movesOfPiece Queen rest3
+      (kingMoves, rest5) = movesOfPiece King rest4
+
+  assertMsg "After kings pawn opening, one less pawn move" (length pawnMoves == 7 * 2 + 1)
+  assertMsg "The knights have an extra move" (length knightMoves == 2 * 2 + 1)
+
+  let headBishop = fst $ head bishopMoves
+      sameBishop = foldl (\b (p,_) -> b && p == headBishop) True bishopMoves
+  assertMsg "The kings side bishop can move 5 places" (length bishopMoves == 5)
+  assertMsg "We can only move the white bishop" (sameBishop && headBishop.owner ==White)
+
+  assertMsg "The white queen has 4 moves" (length queenMoves == 4)
+  assertMsg "The king now has a move" (length kingMoves == 1)
+  assertMsg "And no more white moves" (null rest5)
+
+  assertMsg "None of the white moves is a capture!" (all (\(_, m) -> regularMove m) whiteMoves)
+
+-- setup fools mate
+blackBishopsPawnMove : ChessMove
+blackBishopsPawnMove = ChessMove with
+                          from = F7
+                          to = F6
+                          by = Black
+                          promote = None
+                          check = None
+
+whiteQueensPawnMove : ChessMove
+whiteQueensPawnMove = ChessMove with
+                          from = D2
+                          to = D3
+                          by = White
+                          promote = None
+                          check = None
+
+blackKnightsPawnMove : ChessMove
+blackKnightsPawnMove = ChessMove with
+                          from = G7
+                          to = G5
+                          by = Black
+                          promote = None
+                          check = None
+
+whiteQueenToMate : ChessMove
+whiteQueenToMate = ChessMove with
+                          from = D1
+                          to = H5
+                          by = White
+                          promote = None
+                          check = None  -- skip this for now as we'll remove this.
+
+
+foolsMateScenario = scenario do
+  let initGameState = initState ()
+      m1 = advance initGameState kingsPawnMove
+      m2 = advance m1 blackBishopsPawnMove
+      m3 = advance m2 whiteQueensPawnMove
+      m4 = advance m3 blackKnightsPawnMove
+      m5 = advance m4 whiteQueenToMate
+      blackMoves = allMoves Black m5
+
+  assertMsg "Black is in Check!" (isSome $ inCheck Black m5)
+  assertMsg "Black is checkmated!" (inCheckMate Black m5)
+

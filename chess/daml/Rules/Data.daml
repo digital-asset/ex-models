@@ -86,13 +86,15 @@ toMoveData state move = do
   assertMsg "Player doesn't own piece" (state.side == piece.owner)
   return $ MoveData with ..
 
-initPieces : Side -> [Piece]
-initPieces Black =
-  let mirror p = p with
+mirror : Piece -> Piece
+mirror p = p with
           coord = toCoord (flipRow (toIntCoord p.coord))
           owner = Black
-  in
+
+initPieces : Side -> [Piece]
+initPieces Black =
   map mirror (initPieces White)
+
 initPieces White =
   let initTypes = [Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]
       pawns = map (\l -> Piece with
