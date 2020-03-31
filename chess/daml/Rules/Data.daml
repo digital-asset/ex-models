@@ -19,6 +19,7 @@ toIntCoord : Coord -> IntCoord
 toIntCoord c = (i / 8, i % 8)
   where i = fromEnum c
 
+toCoord : IntCoord -> Coord
 toCoord (col, row) = toEnum i
   where i = col * 8 + row
 
@@ -52,6 +53,7 @@ data MoveData = MoveData with
   from : IntCoord
   to : IntCoord
   piece : Piece
+    deriving Show
 
 -- | Takes a `GameState` and tries to turn it into a map from
 -- | integer coordinates x in [0-7] and y in [0-7]. Fails if a

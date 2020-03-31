@@ -58,7 +58,7 @@ data GameState = GameState with
   side : Side                 -- who's turn is it
   pieces : PieceMap           -- pieces on the board.
   everCheck : EverCheck       -- has either side been checked
-  moves : [ChessMove]         -- reverse ordered list of moves.
+  moves : [ChessMove]         -- stack of list moves
     deriving (Eq, Show)
 
 -- this is a bit naive at-the-moment, in real fog-of-war white would be able to see black pieces that it is threatening.
@@ -69,15 +69,15 @@ splitGameStateOfSide side gs =
     moves = filter (\m -> m.by == side) gs.moves
 
 mergeMoves acc (w::ws) (b::bs) = mergeMoves (b::(w::acc)) ws bs
-mergeMoves acc [w]     []      = reverse (w :: acc) -- white may have an extra move
-mergeMoves acc []      []      = reverse acc
+mergeMoves acc [w]     []      = (w :: acc) -- white may have an extra move
+mergeMoves acc []      []      = acc
 mergeMoves _   _       _       = error "More black moves than white ones!"
 
 joinGameStates : GameState -> GameState -> GameState
 joinGameStates ws bs =
   ws with
     pieces = M.union ws.pieces bs.pieces
-    moves = mergeMoves [] ws.moves bs.moves
+    moves = mergeMoves [] (reverse ws.moves) (reverse bs.moves)
 
 data DrawType
   = PlayerDraw Side
@@ -86,8 +86,13 @@ data DrawType
   | FiftyMoveRule
     deriving (Eq, Show)
 
+data DrawOrWinner a
+  = Draw DrawType
+  | Winner a
+    deriving (Eq, Show)
+
 data MoveResult
-  = DrawOrWinner (Either DrawType Side)
+  = DrawOrWinner (DrawOrWinner Side)
   | NewState GameState
   | Error Text
     deriving (Eq, Show)

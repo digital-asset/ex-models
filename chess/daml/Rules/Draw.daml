@@ -25,6 +25,9 @@ data DrawState = DrawState with
   stateCounts : [(OrdGameState, Int)]
   gameState : GameState
 
+checkStaleMate : Side -> GameState -> Bool
+checkStaleMate side gs =
+  error "Not implemented"
 
 -- | Checkdraw checks the 50 move rule and threefold repetition by
 -- | Replaying the whole game

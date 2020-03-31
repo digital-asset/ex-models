@@ -145,3 +145,12 @@ possibleMoves piece gs =
         Queen -> followDs ps gs ic [Up .. ]
         -- TODO: add castling
         King -> movesOrCaptures ps gs $ filter onBoard $ fmap (moveD ic) [Up .. ]
+
+-- The type of the f in foldMoves
+-- the piece is repeated for all possible MoveOrCapture's
+type FoldMoveFunction a = a -> Piece -> MoveOrCapture -> a
+
+--foldMoves : FoldMoveFunction a -> a -> Side -> GameState -> a
+--foldMoves f init side gs = foldP
+--    where fp piece a =
+    -- for each piece

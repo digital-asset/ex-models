@@ -24,7 +24,7 @@ tryMove state move =
     Left e -> Error e
     Right ns -> case checkWin ns of
       None -> NewState ns
-      Some p -> DrawOrWinner (Right p)
+      Some p -> DrawOrWinner (Winner p)
 
 tryMoveInner : GameState -> ChessMove -> E GameState
 tryMoveInner state move = do

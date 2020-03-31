@@ -24,6 +24,7 @@ simpleMove md = do
   let
     target = fromOptional md.to capture
     isCapture = isSome capture
+
   movePath <- path md.piece.tp md.state.side isCapture md.from md.to
 
   forA_ movePath (\c -> assertMsg "Path blocked" (isNone $ M.lookup c md.stateMap))

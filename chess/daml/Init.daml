@@ -15,27 +15,22 @@ data InitData = InitData with
   white : Party   -- return these as parties so that the tests are easier to desribe
   black : Party
   operator : Party
-  takeMove : Scenario ResultOrNextMove -> (Party, Coord, Coord) -> Scenario ResultOrNextMove
+  submitMove : Scenario ResultOrNextMove -> (Party, ChessMove) -> Scenario ResultOrNextMove
 
 type ResultOrNextMove = Either (ContractId GameResult) GameContractIds
 
--- Helper to advance play with just a tripe of party, from, to
-createTakeMove : Party -> ContractId OperatorRole -> (Party -> Side) -> Scenario ResultOrNextMove -> (Party, Coord, Coord) -> Scenario ResultOrNextMove
-createTakeMove operator orId playerToSide seg (player, from, to) =
-  let promote = None
-      check = None
-      by = playerToSide player
-  in do
+-- Helper to advance play with a move that handles both the player and operators actions
+-- These are used only in the testing scenario's.
+createSubmitMove : Party -> ContractId OperatorRole -> Scenario ResultOrNextMove -> (Party, ChessMove) -> Scenario ResultOrNextMove
+createSubmitMove operator operatorRole seg (player, move) =
+  do
     eg <- seg
     case eg of
       Left _ -> abort "Can't continue won game"
       Right (activeId, _passive) -> do
-        moveId <- submit player do
-                    active <- fetch activeId
-                    exercise activeId Move with
-                      move = ChessMove with ..
-        submit operator do exercise orId AdvancePlay
-
+        _moveId <- submit player do
+                    exercise activeId Move with ..
+        submit operator do exercise operatorRole AdvancePlay
 
 initData = do
   let gameId = "Alice (White) vs Bob (Black) "
@@ -66,6 +61,15 @@ initData = do
   assert (white == alice)
   assert (black == bob)
 
-  let playerToSide p = if p == alice then White else Black
-  let takeMove = createTakeMove operator operatorRole playerToSide
+  let submitMove = createSubmitMove operator operatorRole
   return InitData with ..
+
+orderedCoordsToMovesInner _  _  acc _  []              = reverse acc
+orderedCoordsToMovesInner wp bp acc by ((from,to)::tl) =
+    let chessMove = ChessMove with from, to, by, promote = None, check = None
+        party = if by == White then wp else bp
+    in
+    orderedCoordsToMovesInner wp bp ((party,chessMove)::acc) (oppositeSide by) tl
+
+orderedCoordsToMoves : Party -> Party -> [(Coord,Coord)] -> [(Party,ChessMove)]
+orderedCoordsToMoves wp bp lst = orderedCoordsToMovesInner wp bp [] White lst

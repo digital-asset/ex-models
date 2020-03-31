@@ -5,8 +5,9 @@ daml 1.2
 module Chess where
 
 
-import Rules.Main
+import Rules.Draw
 import Rules.Data
+import Rules.Main
 import Types
 
 type GameId = Text
@@ -79,7 +80,7 @@ template Game
       End : ContractId GameResult
         with
           game : Optional GameState
-          drawOrWinner : Either DrawType Party
+          drawOrWinner : DrawOrWinner Party
         do
           create GameResult with ..
 
@@ -90,7 +91,7 @@ template GameResult
     gameId : GameId
     operator : Party
     game : Optional GameState
-    drawOrWinner : Either DrawType Party
+    drawOrWinner : DrawOrWinner Party
   where
     signatory proposer, opponent, operator
 
@@ -140,11 +141,16 @@ template ActiveSideOfGame
     maintainer key._1
 
     controller player can
-      nonconsuming Move : ContractId ActiveMove
+      nonconsuming Move : ContractId ActiveAction
         with
           move : ChessMove
         do
-          create ActiveMove with ..
+          create ActiveAction with move = Some move, ..
+
+      nonconsuming ClaimDraw : ContractId ActiveAction
+        do
+          create ActiveAction with move = None, ..
+
 
       Forfeit : ContractId Surrender
         do
@@ -206,13 +212,13 @@ template AcceptedDraw
     key (operator, gameId) : (Party, GameId)
     maintainer key._1
 
-template ActiveMove
+template ActiveAction
   with
     player : Party
     operator : Party
     gameId : GameId
     opponent : Party
-    move : ChessMove
+    move : Optional ChessMove     -- None = ClaimDraw
   where
     signatory operator
 
@@ -230,56 +236,73 @@ template OperatorRole
     maintainer key._1
 
     controller operator can
-      -- operator's reaction to the existence of an ActiveMove
+      -- operator's reaction to the existence of an ActiveAction
       nonconsuming AdvancePlay : Either (ContractId GameResult) GameContractIds
         do
-          -- Look up move information from ActiveMove and archive it
-          (amId, activeMove) <- fetchByKey @ActiveMove (operator, gameId)
+          -- Look up move information from ActiveAction and archive it
+          (amId, action) <- fetchByKey @ActiveAction (operator, gameId)
 
-          let player = activeMove.player
-              opponent = activeMove.opponent
-              move = activeMove.move
+          let player = action.player
+              opponent = action.opponent
+              move = action.move
           exercise amId Archive
 
           -- figure out global state
           (activeId, activeState) <- fetchByKey @ActiveSideOfGame (operator, gameId, player)
           (passiveId, passiveState) <- fetchByKey @PassiveSideOfGame (operator, gameId, opponent)
-          let gameState = joinGameStates activeState.active passiveState.passive
+          let gameState = if activeState.side == White
+                          then joinGameStates activeState.active passiveState.passive
+                          else joinGameStates passiveState.passive activeState.active
               moveSide = activeState.side
-          case tryMove gameState move of
-            -- determine winner
-            Winner player ->
-              let winner = if player == moveSide then activeState.player else activeState.opponent in
-              let game = (gameState with moves = move :: gameState.moves) in
-              do
-                (gameStartId, gameStart) <- fetchByKey @Game (operator, gameId)
-                gameResultId <- exercise gameStartId End with game = Some game, drawOrWinner = Right winner, ..
-                exercise activeId DeclareWinnerActive with result = gameResultId
-                exercise passiveId DeclareWinnerPassive with result = gameResultId
-                return $ Left gameResultId
-            -- determine draw
-            Draw drawType ->
-              do
-                (gameStartId, gameStart) <- fetchByKey @Game (operator, gameId)
-                gameResultId <- exercise gameStartId End with game = None, drawOrWinner = Left drawType, ..
-                exercise activeId DeclareWinnerActive with result = gameResultId
-                exercise passiveId DeclareWinnerPassive with result = gameResultId
-                return $ Left gameResultId
-            -- determine hmm ?
-            Error e -> abort e
-            -- alternate states
-            NewState newJoinedState ->
-              let whiteState = splitGameStateOfSide White newJoinedState
-                  blackState = splitGameStateOfSide Black newJoinedState
-                  (active, passive) =
-                    case moveSide of
-                      White -> (blackState, whiteState)
-                      Black -> (whiteState, blackState)
-              in
-              do
-                passiveId' <- exercise activeId Inactivate with passive
-                activeId' <- exercise passiveId Activate with active
-                return $ Right (activeId', passiveId')
+          case move of
+            None  ->  -- claimDraw?
+              case checkDraw gameState.moves of
+                Left e -> abort e
+                Right None ->
+                  do -- not a draw
+                    return $ Right (activeId, passiveId)
+                Right (Some drawType) ->
+                  do
+                    let drawOrWinner = Draw drawType
+                    (gameStartId, gameStart) <- fetchByKey @Game (operator, gameId)
+                    gameResultId <- exercise gameStartId End with game = Some gameState, ..
+                    exercise activeId DeclareWinnerActive with result = gameResultId
+                    exercise passiveId DeclareWinnerPassive with result = gameResultId
+                    return $ Left gameResultId
+
+            Some m ->
+              case tryMove gameState m of
+                -- determine potential winner
+                DrawOrWinner dow ->
+                  let drawOrWinner =
+                        case dow of
+                          Draw dt -> Draw dt
+                          Winner side -> if side == moveSide then Winner activeState.player else Winner activeState.opponent
+                      game = (gameState with moves = m :: gameState.moves)
+                  in
+                  do
+                    (gameStartId, gameStart) <- fetchByKey @Game (operator, gameId)
+                    gameResultId <- exercise gameStartId End with game = Some game, ..
+                    exercise activeId DeclareWinnerActive with result = gameResultId
+                    exercise passiveId DeclareWinnerPassive with result = gameResultId
+                    return $ Left gameResultId
+                Error e ->
+                  do
+                    -- abort e  -- What mechanism exists to warn to alert the user?
+                    return $ Right (activeId, passiveId)
+                -- alternate states
+                NewState newJoinedState ->
+                  let whiteState = splitGameStateOfSide White newJoinedState
+                      blackState = splitGameStateOfSide Black newJoinedState
+                      (active, passive) =
+                        case moveSide of
+                          White -> (blackState, whiteState)
+                          Black -> (whiteState, blackState)
+                  in
+                  do
+                    passiveId' <- exercise activeId Inactivate with passive
+                    activeId' <- exercise passiveId Activate with active
+                    return $ Right (activeId', passiveId')
 
       -- operator's reaction to the existence of an Surrender
       nonconsuming AcknowledgeSurrender : ContractId GameResult
@@ -287,11 +310,11 @@ template OperatorRole
           (sId, surrender) <- fetchByKey @Surrender (operator, gameId)
           (gameStartId, _gameStart) <- fetchByKey @Game (operator, gameId)
           archive sId
-          exercise gameStartId End with game = None, drawOrWinner = Right surrender.opponent, ..
+          exercise gameStartId End with game = None, drawOrWinner = Winner surrender.opponent, ..
 
       nonconsuming AcknowledgeAcceptedDraw : ContractId GameResult
         do
           (adId, acceptedDraw) <- fetchByKey @AcceptedDraw (operator, gameId)
           (gameStartId, _gameStart) <- fetchByKey @Game (operator, gameId)
           archive adId
-          exercise gameStartId End with game = None, drawOrWinner = Left (PlayerDraw acceptedDraw.side)
+          exercise gameStartId End with game = None, drawOrWinner = Draw (PlayerDraw acceptedDraw.side)

@@ -29,14 +29,13 @@ targetInner md = do
     "Unexpected error: Piece not found."
     (M.lookup lmTo md.stateMap)
   let
-    lastMoveMatch = lastMovePiece.tp == Pawn
-          && rowD lmTo lmFrom == 2
+    lastMovePawn = lastMovePiece.tp == Pawn
+    lastMoveSkipped = rowD lmTo lmFrom == 2
     targetMatch = epTarget == lmTo
-    tgt = if lastMoveMatch && targetMatch && md.piece.tp == Pawn
+    tgt = if lastMovePawn && lastMoveSkipped && targetMatch && md.piece.tp == Pawn
       then epTarget
       else md.to
   return tgt
 
   where
     epTarget = (md.to._1, md.from._2)
-    oEpTargetPiece = M.lookup epTarget md.stateMap

@@ -9,7 +9,12 @@ import Types
 import Rules.Data
 import Rules.Util
 
--- | Path of move: Bool is EnPassant
+invalidMsg : IntCoord -> IntCoord -> Text
+invalidMsg i1 i2 = "Invalid move from " <> show p1 <> " to " <> show p2
+  where p1 = toCoord i1
+        p2 = toCoord i2
+
+-- | Path of move: Bool is Capture
 path : PieceType -> Side -> Bool -> IntCoord -> IntCoord -> E [IntCoord]
 path _ _ _ i1 i2
   | i1 == i2 = abort "Null move is not valid"
