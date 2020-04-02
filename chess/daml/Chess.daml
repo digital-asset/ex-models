@@ -10,6 +10,7 @@ import Rules.Data
 import Rules.Main
 import Types
 
+-- Logic to handle games.
 type GameId = Text
 type GameContractIds = (ContractId ActiveSideOfGame, ContractId PassiveSideOfGame)
 
@@ -143,9 +144,13 @@ template ActiveSideOfGame
     controller player can
       nonconsuming Move : ContractId ActiveAction
         with
-          move : ChessMove
+          from : Coord
+          to : Coord
+          promote : Optional PieceType
+          check : Optional (Coord, Coord)
         do
-          create ActiveAction with move = Some move, ..
+          let move = Some ChessMove with by = side, ..
+          create ActiveAction with move, ..
 
       nonconsuming ClaimDraw : ContractId ActiveAction
         do
