@@ -7,5 +7,6 @@ module Tests.All where
 import Init()
 import Tests.Chess()
 import Tests.Draw()
+import Tests.Moves()
 import Tests.Rules()
 import Tests.SpecialRules()
