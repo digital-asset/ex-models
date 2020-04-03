@@ -7,7 +7,6 @@ all:
 	+$(MAKE) -C crowd-funding
 	+$(MAKE) -C expense-pool
 	+$(MAKE) -C governance
-	+$(MAKE) -C mongodb-ods
 	+$(MAKE) -C onboarding
 	+$(MAKE) -C option
 	+$(MAKE) -C task-tracking
