@@ -1,4 +1,4 @@
-sdk-version: 0.13.54
+sdk-version: 1.0.0
 name: voting
 version: 1.0.0
 source: daml/Voting.daml
@@ -9,8 +9,6 @@ parties:
 - B
 - C
 - Proposer
-exposed-modules:
-- Voting
 dependencies:
 - daml-prim
 - daml-stdlib

@@ -1,4 +1,4 @@
-sdk-version: 0.13.54
+sdk-version: 1.0.0
 name: ex-issuertoken
 source: daml/Main.daml
 scenario: Scenarios:setup

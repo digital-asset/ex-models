@@ -1,4 +1,4 @@
-sdk-version: 0.13.54
+sdk-version: 1.0.0
 name: onboarding
 version: 1.0.0
 source: daml/Onboard.daml
@@ -7,8 +7,6 @@ parties:
 - HR
 - Alice
 - Supervisor
-exposed-modules:
-- Onboard
 dependencies:
 - daml-prim
 - daml-stdlib

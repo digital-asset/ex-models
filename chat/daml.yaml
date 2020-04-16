@@ -1,4 +1,4 @@
-sdk-version: 0.13.54
+sdk-version: 1.0.0
 name: group-chat
 source: daml/GroupChat.daml
 scenario: GroupChat:archive_charlie

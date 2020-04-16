@@ -19,9 +19,14 @@ A lean, but somewhat privacy-preserving process to issue airline tickets and all
 [Project Readme](airline/README.md)
 
 ### Approval Chain
-A simple three-step, sequential approval process, collecting signatures from approvers along the way.
+A three-step, sequential approval process, collecting signatures from approvers along the way.
 
 [Project Readme](approval-chain/README.md)
+
+### Auction
+An auction model with private bids.
+
+[Project Readme](auction/README.md)
 
 ### Broadcast
 A model showing how a broadcaster can broadcast information to subscribers via the ledger in a non-guaranteed, but efficient manner.
@@ -48,28 +53,28 @@ A shared expense pool where expenses are added in form of Ious, which then get s
 
 [Project Readme](expense-pool/README.md)
 
-### Issuer Token
-Example of token issuance by a central controlling party.
-
-[Project Readme](issuertoken/README.md)
-
 ### Governance
 A model demonstrating how on-chain governance can be modeled in DAML. Citizens can vote for the creation of a consititution contract, for the update of the constitution text, or for the upgrade of the constitution contract to a newer version.
 
 [Project Readme](governance/README.md)
 
-### MongoDB ODS
-A simplified demo covering the use of MongoDB as an operational data store to capture events streamed from a DAML Ledger and to run analytics using native MongoDB aggregation pipelines.
+### Issuer Token
+Example of token issuance by a central controlling party.
 
-[Project Readme](mongoDB_ODS/README.md)
+[Project Readme](issuertoken/README.md)
 
 ### Onboarding
-A simple task-list app with composable sub-tasks, designed to check off onboarding tasks.
+A task-list app with composable sub-tasks, designed to check off onboarding tasks.
 
 [Project Readme](onboarding/README.md)
 
 ### Option
-A simple European style cash settled option.
+A European style cash settled option.
+
+[Project Readme](option/README.md)
+
+### Shop
+A marketplace example where vendors offer items to buyers.
 
 [Project Readme](option/README.md)
 

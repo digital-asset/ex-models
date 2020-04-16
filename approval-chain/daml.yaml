@@ -1,4 +1,4 @@
-sdk-version: 0.13.54
+sdk-version: 1.0.0
 name: approval-chain
 version: 1.0.0
 source: daml/ApprovalChain.daml
@@ -8,8 +8,6 @@ parties:
 - A
 - B
 - C
-exposed-modules:
-- ApprovalChain
 dependencies:
 - daml-prim
 - daml-stdlib

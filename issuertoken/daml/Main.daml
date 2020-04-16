@@ -1,10 +1,6 @@
 -- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
---
--- This file contains the smart contracts per-se. See Scenarios.daml for unit tests
--- which serve as examples of the workflows.
 
-daml 1.2
 module Main where
 
 -- Wallet tracking tokens issued to a single owner. 

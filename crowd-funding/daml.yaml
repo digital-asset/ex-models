@@ -1,4 +1,4 @@
-sdk-version: 0.13.54
+sdk-version: 1.0.0
 name: crowd-funding
 version: 1.0.0
 source: daml/Test.daml
@@ -9,8 +9,6 @@ parties:
 - A
 - B
 - C
-exposed-modules:
-- CrowdFunding
 dependencies:
 - daml-prim
 - daml-stdlib

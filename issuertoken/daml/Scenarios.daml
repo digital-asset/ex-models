@@ -5,7 +5,6 @@
 -- This file contains unit tests aka scenarios that can be executed on the 
 -- ledger without having to run an external process to submit the transactions.
 
-daml 1.2
 module Scenarios where
 
 import Main
