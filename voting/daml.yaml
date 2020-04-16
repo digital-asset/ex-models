@@ -1,8 +1,7 @@
 sdk-version: 1.0.0
 name: voting
 version: 1.0.0
-source: daml/Voting.daml
-scenario: Voting.validVote
+source: daml
 parties:
 - Government
 - A

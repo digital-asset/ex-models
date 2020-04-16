@@ -1,7 +1,6 @@
 sdk-version: 1.0.0
 name: auction
-source: daml/Main.daml
-scenario: Main:setup
+source: daml
 parties:
   - Seller
   - Alice

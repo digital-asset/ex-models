@@ -1,8 +1,7 @@
 sdk-version: 1.0.0
 name: crowd-funding
 version: 1.0.0
-source: daml/Test.daml
-scenario: Test:validClaim
+source: daml
 parties:
 - Issuer
 - Originator

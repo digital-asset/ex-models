@@ -1,8 +1,7 @@
 sdk-version: 1.0.0
 name: broadcast
 version: 1.0.0
-source: daml/Broadcast.daml
-scenario: Broadcast:test_broadcast
+source: daml
 parties:
 - Alice
 - Subscriber1

@@ -1,8 +1,7 @@
 sdk-version: 1.0.0
 name: airline
 version: 1.0.0
-source: daml/Airline.daml
-scenario: Airline:dajet
+source: daml
 parties:
 - DA
 - P1

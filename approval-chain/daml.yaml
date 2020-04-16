@@ -1,8 +1,7 @@
 sdk-version: 1.0.0
 name: approval-chain
 version: 1.0.0
-source: daml/ApprovalChain.daml
-scenario: ApprovalChain:validApproval
+source: daml
 parties:
 - Originator
 - A

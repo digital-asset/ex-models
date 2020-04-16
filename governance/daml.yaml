@@ -1,8 +1,7 @@
 sdk-version: 1.0.0
 name: governance
 version: 1.0.0
-source: daml/Test.daml
-scenario: Test.allScenarios
+source: daml
 parties:
 - Government
 - A
