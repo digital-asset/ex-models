@@ -1,13 +1,10 @@
-sdk-version: 0.13.54
+sdk-version: 1.0.0
 name: chess
 version: 1.0.0
-source: daml/Init.daml
-scenario: Init:initData
+source: daml
 parties:
 - Alice
 - Bob
-exposed-modules:
-- Init
 dependencies:
 - daml-prim
 - daml-stdlib

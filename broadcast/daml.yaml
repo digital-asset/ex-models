@@ -1,8 +1,7 @@
-sdk-version: 0.13.54
+sdk-version: 1.0.0
 name: broadcast
 version: 1.0.0
-source: daml/Broadcast.daml
-scenario: Broadcast:test_broadcast
+source: daml
 parties:
 - Alice
 - Subscriber1
@@ -10,8 +9,6 @@ parties:
 - Subscriber3
 - Subscriber4
 - Subscriber5
-exposed-modules:
-- Broadcast
 dependencies:
 - daml-prim
 - daml-stdlib
