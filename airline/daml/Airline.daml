@@ -40,26 +40,33 @@ template Ticket
     flightNumber : Text
     airline : Party
     passenger : Party
-    seatNumber : Optional Text
     seatChoice : Bool
   where
     signatory airline, passenger
 
-    choice CheckIn : (ContractId Ticket, ContractId Flight)
+    choice CheckIn : (ContractId BoardingPass, ContractId Flight)
       with
         flightCid : ContractId Flight
         seat : Text
       controller if seatChoice then passenger else airline
       do
         flight <- fetch flightCid
-        None === seatNumber
         flight.flightNumber === flightNumber
         flight.airline === airline
         assert $ fromSome (TM.lookup seat flight.seatClasses) <= ticketClass
-        newTicketCid <- create this with seatNumber = Some seat
+        boardingPasssCid <- create BoardingPass with
+          seatNumber = seat
+          ticket = this
         newFlightCid <- exercise flightCid AssignSeat with
           passenger; seat; ticketRef
-        return (newTicketCid, newFlightCid)
+        return (boardingPasssCid, newFlightCid)
+
+template BoardingPass
+  with
+    ticket : Ticket
+    seatNumber : Text
+  where
+    signatory ticket.airline, ticket.passenger
 
 template Flight
   with
@@ -121,7 +128,6 @@ dajet = scenario do
           flightNumber
           airline = da
           passenger
-          seatNumber = None
           seatChoice = ticketClass > Coach
       )
       (zip3 [1..5] passengers classes)
