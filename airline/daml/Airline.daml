@@ -26,7 +26,7 @@ template FlightInvite
         ticket.flightNumber === flight.flightNumber
         ticket.airline === flight.airline
 
-        flightCid <- exercise flightCid Onboard with
+        flightCid <- exercise flightCid AddPassenger with
           passenger = ticket.passenger
         ticketCid <- create ticket
 
@@ -85,7 +85,7 @@ template Flight
         create this with
           allocation = insert seat ticketRef allocation
 
-    choice Onboard : ContractId Flight
+    choice AddPassenger : ContractId Flight
       with
         passenger : Party
       controller [airline, passenger]
