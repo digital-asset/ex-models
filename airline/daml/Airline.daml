@@ -4,7 +4,6 @@
 module Airline where
 
 import DA.Assert
-import DA.List
 import DA.Optional
 import DA.TextMap as TM
 
@@ -143,7 +142,7 @@ dajet = scenario do
       passengers = []
     return (inviteCids, flightCid)
 
-  (ticketCids, flightCid) <- foldr
+  ([t1, t2, t3, t4, t5], flightCid) <- foldr
     (\(passenger, inviteCid) acc -> do
       (ticketCids, flightCid) <- acc
       submit passenger do
@@ -154,50 +153,50 @@ dajet = scenario do
 
   submitMustFail da do exercise flightCid TakeOff
   submitMustFail p1 do
-    exercise (ticketCids !! 0) CheckIn with
+    exercise t1 CheckIn with
       flightCid
       seat = "1A"
   submitMustFail da do
-    exercise (ticketCids !! 0) CheckIn with
+    exercise t1 CheckIn with
       flightCid
       seat = "1A"
   submitMustFail p2 do
-    exercise (ticketCids !! 2) CheckIn with
+    exercise t3 CheckIn with
       flightCid
       seat = "1A"
 
   (_, flightCid) <- submit da do
-    exercise (ticketCids !! 0) CheckIn with
+    exercise t1 CheckIn with
       flightCid
       seat = "3A"
 
   submitMustFail da do
-    exercise (ticketCids !! 1) CheckIn with
+    exercise t2 CheckIn with
       flightCid
       seat = "3A"
 
   (_, flightCid) <- submit da do
-    exercise (ticketCids !! 1) CheckIn with
+    exercise t2 CheckIn with
       flightCid
       seat = "3B"
 
   submitMustFail da do
-    exercise (ticketCids !! 2) CheckIn with
+    exercise t3 CheckIn with
       flightCid
       seat = "2A"
 
   (_, flightCid) <- submit p3 do
-    exercise (ticketCids !! 2) CheckIn with
+    exercise t3 CheckIn with
       flightCid
       seat = "2A"
 
   (_, flightCid) <- submit p4 do
-    exercise (ticketCids !! 3) CheckIn with
+    exercise t4 CheckIn with
       flightCid
       seat = "2B"
 
   (_, flightCid) <- submit p5 do
-    exercise (ticketCids !! 4) CheckIn with
+    exercise t5 CheckIn with
       flightCid
       seat = "1A"
 
