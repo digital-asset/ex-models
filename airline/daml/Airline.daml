@@ -4,7 +4,6 @@
 module Airline where
 
 import DA.Assert
-import DA.List
 import DA.Optional
 import DA.TextMap as TM
 
@@ -26,7 +25,7 @@ template FlightInvite
         ticket.flightNumber === flight.flightNumber
         ticket.airline === flight.airline
 
-        flightCid <- exercise flightCid Onboard with
+        flightCid <- exercise flightCid AddPassenger with
           passenger = ticket.passenger
         ticketCid <- create ticket
 
@@ -40,26 +39,33 @@ template Ticket
     flightNumber : Text
     airline : Party
     passenger : Party
-    seatNumber : Optional Text
     seatChoice : Bool
   where
     signatory airline, passenger
 
-    choice CheckIn : (ContractId Ticket, ContractId Flight)
+    choice CheckIn : (ContractId BoardingPass, ContractId Flight)
       with
         flightCid : ContractId Flight
         seat : Text
       controller if seatChoice then passenger else airline
       do
         flight <- fetch flightCid
-        None === seatNumber
         flight.flightNumber === flightNumber
         flight.airline === airline
         assert $ fromSome (TM.lookup seat flight.seatClasses) <= ticketClass
-        newTicketCid <- create this with seatNumber = Some seat
+        boardingPasssCid <- create BoardingPass with
+          seatNumber = seat
+          ticket = this
         newFlightCid <- exercise flightCid AssignSeat with
           passenger; seat; ticketRef
-        return (newTicketCid, newFlightCid)
+        return (boardingPasssCid, newFlightCid)
+
+template BoardingPass
+  with
+    ticket : Ticket
+    seatNumber : Text
+  where
+    signatory ticket.airline, ticket.passenger
 
 template Flight
   with
@@ -85,7 +91,7 @@ template Flight
         create this with
           allocation = insert seat ticketRef allocation
 
-    choice Onboard : ContractId Flight
+    choice AddPassenger : ContractId Flight
       with
         passenger : Party
       controller [airline, passenger]
@@ -121,7 +127,6 @@ dajet = scenario do
           flightNumber
           airline = da
           passenger
-          seatNumber = None
           seatChoice = ticketClass > Coach
       )
       (zip3 [1..5] passengers classes)
@@ -137,7 +142,7 @@ dajet = scenario do
       passengers = []
     return (inviteCids, flightCid)
 
-  (ticketCids, flightCid) <- foldr
+  ([t1, t2, t3, t4, t5], flightCid) <- foldr
     (\(passenger, inviteCid) acc -> do
       (ticketCids, flightCid) <- acc
       submit passenger do
@@ -148,50 +153,50 @@ dajet = scenario do
 
   submitMustFail da do exercise flightCid TakeOff
   submitMustFail p1 do
-    exercise (ticketCids !! 0) CheckIn with
+    exercise t1 CheckIn with
       flightCid
       seat = "1A"
   submitMustFail da do
-    exercise (ticketCids !! 0) CheckIn with
+    exercise t1 CheckIn with
       flightCid
       seat = "1A"
   submitMustFail p2 do
-    exercise (ticketCids !! 2) CheckIn with
+    exercise t3 CheckIn with
       flightCid
       seat = "1A"
 
   (_, flightCid) <- submit da do
-    exercise (ticketCids !! 0) CheckIn with
+    exercise t1 CheckIn with
       flightCid
       seat = "3A"
 
   submitMustFail da do
-    exercise (ticketCids !! 1) CheckIn with
+    exercise t2 CheckIn with
       flightCid
       seat = "3A"
 
   (_, flightCid) <- submit da do
-    exercise (ticketCids !! 1) CheckIn with
+    exercise t2 CheckIn with
       flightCid
       seat = "3B"
 
   submitMustFail da do
-    exercise (ticketCids !! 2) CheckIn with
+    exercise t3 CheckIn with
       flightCid
       seat = "2A"
 
   (_, flightCid) <- submit p3 do
-    exercise (ticketCids !! 2) CheckIn with
+    exercise t3 CheckIn with
       flightCid
       seat = "2A"
 
   (_, flightCid) <- submit p4 do
-    exercise (ticketCids !! 3) CheckIn with
+    exercise t4 CheckIn with
       flightCid
       seat = "2B"
 
   (_, flightCid) <- submit p5 do
-    exercise (ticketCids !! 4) CheckIn with
+    exercise t5 CheckIn with
       flightCid
       seat = "1A"
 
