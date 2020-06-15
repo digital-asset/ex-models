@@ -1,4 +1,4 @@
-sdk-version: 1.0.0
+sdk-version: 1.2.0
 name: expense-pool
 version: 1.0.0
 source: daml
