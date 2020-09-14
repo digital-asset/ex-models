@@ -4,6 +4,7 @@
 module Tests.Chess where
 
 import DA.Assert
+import Daml.Script
 
 import Chess
 import Init
@@ -11,27 +12,27 @@ import Types
 
 type ResultOrNextGame = Either (ContractId Result) (ContractId Game)
 
-takeMove : Scenario ResultOrNextGame
+takeMove : Script ResultOrNextGame
   -> (Party, Coord, Coord)
-  -> Scenario ResultOrNextGame
+  -> Script ResultOrNextGame
 takeMove seg (player, from, to) = do
   eg <- seg
   case eg of
     Left _ -> abort "Can't continue won game"
     Right g -> submit player do
-      exercise g Move with
+      exerciseCmd g Move with
         move = ChessMove with
                           from
                           to
                           promote = None
                           check = None
 
-testEnum = scenario do
+testEnum = script do
   let lst = [0..63]
   let coords = [A1 .. H8]
   lst === fmap fromEnum coords
 
-testFoolsMate = scenario do
+testFoolsMate = script do
   InitData {..} <- initData
 
   let
@@ -45,8 +46,8 @@ testFoolsMate = scenario do
       ]
   game <- foldl takeMove (return $ Right game) moves
 
-  win <- case game of
+  Some win <- case game of
     Right _ -> abort "Should be a win"
-    Left win -> submit black do fetch win
+    Left win -> queryContractId black win
 
   win.winner === Some black

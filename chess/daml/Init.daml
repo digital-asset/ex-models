@@ -3,6 +3,8 @@
 
 module Init where
 
+import Daml.Script
+
 import Chess
 import Types
 
@@ -12,8 +14,8 @@ data InitData = InitData with
   game : ContractId Game
 
 initData = do
-  white <- getParty "Alice"
-  black <- getParty "Bob"
+  white <- allocateParty "Alice"
+  black <- allocateParty "Bob"
 
   let
     gameId = GameId with
@@ -22,11 +24,11 @@ initData = do
       black
 
   prop <- submit white do
-    create GameProposal with
+    createCmd GameProposal with
       proposer = white
       gameId
 
   game <- submit black do
-    exercise prop StartGame
+    exerciseCmd prop StartGame
 
   return InitData with ..

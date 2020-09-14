@@ -10,7 +10,7 @@ The message history per group grows indefinitely and changes in membership requi
 
 ## Workflow
 1. Anyone can start a group by creating a `GroupChat` contract.
-2. New group members are onboarded by existing members. Discovery happens off-ledger. Ie `Alice` is assumed to have told `Bob` and `Charlie` about her group "troll-bot" in the included scenarios.
+2. New group members are onboarded by existing members. Discovery happens off-ledger. Ie `Alice` is assumed to have told `Bob` and `Charlie` about her group "troll-bot" in the included scripts.
 3. Members can post messages with the `Post_Message` choice and leave the group using the `LeaveGroup` choice as they please.
 
 ## Building
@@ -20,8 +20,8 @@ daml build
 ```
 
 ## Testing
-The model is tested in a series of sequential scenarios terminating in `archive_charlie`. Note how `Post_Message` is a relatively small transaction, whereas `LeaveGroup` and `AddMember` get larger as the group grows.
-To test all scenarios:
+The model is tested in a series of sequential scripts terminating in `archive_charlie`. Note how `Post_Message` is a relatively small transaction, whereas `LeaveGroup` and `AddMember` get larger as the group grows.
+To test all scripts:
 ```
 daml test --color
 ```

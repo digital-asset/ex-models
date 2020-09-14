@@ -12,9 +12,9 @@ daml build
 ```
 
 ## Testing
-To test all scenarios:
+To test all scripts:
 ```
-daml test --color Scenarios.daml
+daml test --color Scripts.daml
 ```
 
 ## Running

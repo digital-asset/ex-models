@@ -2,83 +2,84 @@
 -- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 --
--- This file contains unit tests aka scenarios that can be executed on the 
+-- This file contains unit tests aka scripts that can be executed on the
 -- ledger without having to run an external process to submit the transactions.
 
-module Scenarios where
+module Scripts where
+
+import Daml.Script
 
 import Main
 
-setup = scenario do
-  issuer <- getParty "Issuer"
-  sally <- getParty "Sally"
-  rebecca <- getParty "Rebecca"
+setup = script do
+  issuer <- allocateParty "Issuer"
+  sally <- allocateParty "Sally"
+  rebecca <- allocateParty "Rebecca"
 
   -- The issuer ‘mints’ these tokens on the blockchain into their own wallet.
   issuerWalletId <- submit issuer do
-    create Wallet with
+    createCmd Wallet with
       issuer = issuer
       owner = issuer
       tokens = 1000
       maxTokens = 1000
 
   -- The issuer now has a wallet which shows 1,000 of their blockchain-based shares or tokens.
-  issuerWallet <- submit issuer do
-    fetch issuerWalletId
+  Some issuerWallet <- queryContractId issuer issuerWalletId
   assert(issuerWallet.owner == issuer && issuerWallet.tokens == 1000)
 
   -- The issuer sends one token to another wallet owned by Sally.
 
-  -- 1. Authorize Sally to accept the token prior to the blockchain ‘clearing’ 
+  -- 1. Authorize Sally to accept the token prior to the blockchain ‘clearing’
   -- or confirming the transaction.
-  sallyWalletId <- submit issuer do 
-    exercise issuerWalletId AuthorizeInvestor with 
+  sallyWalletId <- submit issuer do
+    exerciseCmd issuerWalletId AuthorizeInvestor with
       investor = sally
       maxTokens' = 1
 
-  sallyTokenRequestId <- submit sally do 
-    exercise sallyWalletId RequestTokens with requestedQuantity = 1
+  sallyTokenRequestId <- submit sally do
+    exerciseCmd sallyWalletId RequestTokens with requestedQuantity = 1
 
   (issuerWalletId, sallysWalletId) <- submit issuer do
-    exercise issuerWalletId AcceptTokenRequest with requestId = sallyTokenRequestId
+    exerciseCmd issuerWalletId AcceptTokenRequest with requestId = sallyTokenRequestId
 
-  -- Sally’s wallet that received the token from the issuer now holds one token. 
-  sallyWallet <- submit sally do fetch sallysWalletId
+  -- Sally’s wallet that received the token from the issuer now holds one token.
+  Some sallyWallet <- queryContractId sally sallysWalletId
   assert(sallyWallet.tokens == 1)
-  
+
   -- The recipient is now in sole custody of one token.
-  issuerWallet <- submit issuer do fetch issuerWalletId
+  Some issuerWallet <- queryContractId issuer issuerWalletId
   assert(issuerWallet.tokens == 999)
 
-  -- 2. Can the issuer revoke the token from Sally? Upon revocation will the 
-  -- token simply be subtracted from the outstanding supply or will the token 
+  -- 2. Can the issuer revoke the token from Sally? Upon revocation will the
+  -- token simply be subtracted from the outstanding supply or will the token
   -- be transferred from Sally’s wallet back to the issuers wallet?
   (sallyWalletId, issuerWalletId) <- submit issuer do
-    exercise sallysWalletId TransferTokens with
+    exerciseCmd sallysWalletId TransferTokens with
       quantity = 1
       toWalletId = issuerWalletId
 
-  -- 3. Can the issuer create a ‘rule’ in the smart contract limiting how many 
+  -- 3. Can the issuer createCmd a ‘rule’ in the smart contract limiting how many
   -- tokens from the outstanding supply Sally may hold?
   submitMustFail issuer do
-    exercise issuerWalletId TransferTokens with 
+    exerciseCmd issuerWalletId TransferTokens with
       quantity = 2
       toWalletId = sallyWalletId
 
   -- 4. The issuer also wishes to send a token to Rebecca. The issuer would like
-  -- for Rebecca to not be able to send the token to Sally and vice versa. Is 
+  -- for Rebecca to not be able to send the token to Sally and vice versa. Is
   -- this possible to enforce?
   rebeccaAuthId <- submit issuer do
-    exercise issuerWalletId AuthorizeInvestor with 
+    exerciseCmd issuerWalletId AuthorizeInvestor with
       investor = rebecca
       maxTokens' = 20
 
   (issuerWalletId, rebeccasWalletId) <- submit issuer do
-    exercise issuerWalletId TransferTokens with
+    exerciseCmd issuerWalletId TransferTokens with
         quantity = 10
         toWalletId = rebeccaAuthId
 
   submitMustFail rebecca do
-    exercise rebeccasWalletId TransferTokens with 
+    exerciseCmd rebeccasWalletId TransferTokens with
         quantity = 1
         toWalletId = sallyWalletId

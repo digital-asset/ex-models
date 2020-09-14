@@ -4,6 +4,7 @@
 module Test where
 
 import DA.Next.Set as S
+import Daml.Script
 import Governance
 
 data Fixture = Fixture with
@@ -14,33 +15,32 @@ data Fixture = Fixture with
   citizens : Set Party
   name : Text
 
-fixture : Scenario Fixture
+fixture : Script Fixture
 fixture =
   do
-    government <- getParty "Government"
-    x <- getParty "A"
-    y <- getParty "B"
-    z <- getParty "C"
+    government <- allocateParty "Government"
+    x <- allocateParty "A"
+    y <- allocateParty "B"
+    z <- allocateParty "C"
     let citizens = S.fromList [ x, y, z ]
     let name = "TestBallot"
     pure Fixture with ..
-    
-acceptBallot : Proposal -> Scenario DecisionOutcome
-acceptBallot proposal = 
+
+acceptBallot : Fixture -> Proposal -> Script DecisionOutcome
+acceptBallot Fixture{..} proposal =
   do
-    Fixture{..} <- fixture
     let ballot = Ballot with government; name; proposal; voters = S.empty; voted = S.empty; votes = []
     let ballotKey = key ballot
-    submit government do create ballot
-    submit government do exerciseByKey @Ballot ballotKey Add with voter = x
-    submit government do exerciseByKey @Ballot ballotKey Add with voter = y
-    submit government do exerciseByKey @Ballot ballotKey Add with voter = z
-    submit x do exerciseByKey @Ballot ballotKey Vote with voter = x; accept = True
-    submit y do exerciseByKey @Ballot ballotKey Vote with voter = y; accept = True
-    submit z do exerciseByKey @Ballot ballotKey Vote with voter = z; accept = False
-    submit government do exerciseByKey @Ballot ballotKey Decide
+    submit government do createCmd ballot
+    submit government do exerciseByKeyCmd @Ballot ballotKey Add with voter = x
+    submit government do exerciseByKeyCmd @Ballot ballotKey Add with voter = y
+    submit government do exerciseByKeyCmd @Ballot ballotKey Add with voter = z
+    submit x do exerciseByKeyCmd @Ballot ballotKey Vote with voter = x; accept = True
+    submit y do exerciseByKeyCmd @Ballot ballotKey Vote with voter = y; accept = True
+    submit z do exerciseByKeyCmd @Ballot ballotKey Vote with voter = z; accept = False
+    submit government do exerciseByKeyCmd @Ballot ballotKey Decide
 
-assertConstitution : DecisionOutcome -> Scenario (ContractId Constitution)
+assertConstitution : DecisionOutcome -> Script (ContractId Constitution)
 assertConstitution outcome =
   case outcome of
     None -> fail "Expected Some outcome, got None"
@@ -49,7 +49,7 @@ assertConstitution outcome =
         Left constitutionId -> pure constitutionId
         _ -> fail "Expected Left (ContractId Constitution), got Right"
 
-assertConstitutionV2 : DecisionOutcome -> Scenario (ContractId ConstitutionV2)
+assertConstitutionV2 : DecisionOutcome -> Script (ContractId ConstitutionV2)
 assertConstitutionV2 outcome =
   case outcome of
     None -> fail "Expected Some outcome, got None"
@@ -59,52 +59,54 @@ assertConstitutionV2 outcome =
         _ -> fail "Expected Right (ContractId ConstitutionV2), got Left"
 
 -- Vote to create constitution
-voteCreateConstitution = scenario do
-  Fixture{..} <- fixture
+voteCreateConstitution' = voteCreateConstitution =<< fixture
+
+voteCreateConstitution fixture@Fixture{..} = script do
   let proposal = CreateConstitution (Constitution with government; citizens; text = "Constitution Text v1"; version = 1)
-  outcome <- acceptBallot proposal
+  outcome <- acceptBallot fixture proposal
   constitutionId <- assertConstitution outcome
-  constitution <- submit government do fetch constitutionId
+  Some constitution <- queryContractId government constitutionId
   assert $ constitution.text == "Constitution Text v1"
   assert $ constitution.version == 1
   pure constitutionId
 
 -- Vote to update constitution text
-voteUpdateConstitutionText = scenario do
-  Fixture{..} <- fixture
-  constitutionId <- voteCreateConstitution
+voteUpdateConstitutionText' = voteUpdateConstitutionText =<< fixture
+
+voteUpdateConstitutionText fixture@Fixture{..} = script do
+  constitutionId <- voteCreateConstitution fixture
   let proposal = UpdateConstitutionText (constitutionId, "Constitution Text v1.1")
-  outcome <- acceptBallot proposal
+  outcome <- acceptBallot fixture proposal
   constitutionId <- assertConstitution outcome
-  constitution <- submit government do fetch constitutionId
+  Some constitution <- queryContractId government constitutionId
   assert $ constitution.text == "Constitution Text v1.1"
   assert $ constitution.version == 1
   pure constitutionId
 
 -- Vote to ugrade constitution contract
-voteUpgradeConstitution = scenario do
-  Fixture{..} <- fixture
-  constitutionId <- voteUpdateConstitutionText
+voteUpgradeConstitution' = voteUpgradeConstitution =<< fixture
+voteUpgradeConstitution fixture@Fixture{..} = script do
+  constitutionId <- voteUpdateConstitutionText fixture
   let proposal = UpgradeConstitution constitutionId
-  outcome <- acceptBallot proposal
+  outcome <- acceptBallot fixture proposal
   constitutionV2Id <- assertConstitutionV2 outcome
-  constitutionV2 <- submit government do fetch constitutionV2Id
+  Some constitutionV2 <- queryContractId government constitutionV2Id
   assert $ constitutionV2.text == "Constitution Text v1.1"
   assert $ constitutionV2.version == 2
   pure constitutionV2Id
 
 -- Create a new ballot off ConstitutionV2
 -- We can create the ballot and all voting rights right away using the signatures on ConstitutionV2
-createNewBallotOffConstitution = scenario do
-  Fixture{..} <- fixture
-  constitutionV2Id <- voteUpgradeConstitution
+createNewBallotOffConstitution' = createNewBallotOffConstitution =<< fixture
+createNewBallotOffConstitution fixture@Fixture{..} = script do
+  constitutionV2Id <- voteUpgradeConstitution fixture
   -- Now we can create new ballots and voting rights right off the constitution having everyone's signature there
   let proposal = CreateConstitution (Constitution with government; citizens; text = "Constitution Text v3"; version = 1)
-  submit government do exercise constitutionV2Id CreateBallot with name = "NewBallot"; proposal
+  submit government do exerciseCmd constitutionV2Id CreateBallot with name = "NewBallot"; proposal
 
-allScenarios = scenario do
-  voteCreateConstitution
-  voteUpdateConstitutionText
-  voteUpgradeConstitution
-  createNewBallotOffConstitution
-  
+allScripts = do
+  fixture <- fixture
+  voteCreateConstitution fixture
+  voteUpdateConstitutionText fixture
+  voteUpgradeConstitution fixture
+  createNewBallotOffConstitution fixture

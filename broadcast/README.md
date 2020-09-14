@@ -16,8 +16,8 @@ daml build
 ```
 
 ## Testing
-The model is tested in scenario `test_broadcast`. Note how as subscribers are added, the `BroadcastUpdate` transactions get larger, but the transaction to add a new subscriber is constant size.
-To run all scenarios:
+The model is tested in the script `test_broadcast`. Note how as subscribers are added, the `BroadcastUpdate` transactions get larger, but the transaction to add a new subscriber is constant size.
+To run all scripts:
 ```
 daml test --color
 ```

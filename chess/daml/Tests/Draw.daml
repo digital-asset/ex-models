@@ -4,6 +4,7 @@
 module Tests.Draw where
 
 import DA.Assert
+import Daml.Script
 
 import Types
 import Chess
@@ -11,11 +12,11 @@ import Init
 
 import Tests.Chess
 
-testThreeRepeat = scenario do
+testThreeRepeat = script do
   InitData {..} <- initData
 
   submitMustFail white do
-    exercise game ClaimDraw
+    exerciseCmd game ClaimDraw
 
   let
     moves = [
@@ -42,20 +43,19 @@ testThreeRepeat = scenario do
   draw <- case game of
     Right g -> do
       submit white do
-        exercise g ClaimDraw
+        exerciseCmd g ClaimDraw
     Left _ -> abort "Should be in play"
 
-  submit white do
-    res <- fetch draw
-    res.winner === None
+  Some res <- queryContractId white draw
+  res.winner === None
 
   assert True
 
-testFiftyMove = scenario do
+testFiftyMove = script do
   InitData {..} <- initData
 
   submitMustFail white do
-    exercise game ClaimDraw
+    exerciseCmd game ClaimDraw
 
   let
     moves = [
@@ -78,7 +78,7 @@ testFiftyMove = scenario do
   case game of
     Right g -> do
       submitMustFail white do
-        exercise g ClaimDraw
+        exerciseCmd g ClaimDraw
     Left _ -> abort "Should be in play"
 
   game <- takeMove (return game) (black, A6, A8)
@@ -87,11 +87,10 @@ testFiftyMove = scenario do
   draw <- case game of
     Right g -> do
       submit white do
-        exercise g ClaimDraw
+        exerciseCmd g ClaimDraw
     Left _ -> abort "Should be in play"
 
-  submit white do
-    res <- fetch draw
-    res.winner === None
+  Some res <- queryContractId white draw
+  res.winner === None
 
   assert True

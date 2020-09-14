@@ -5,6 +5,7 @@ module Main where
 
 import DA.Date as D
 import DA.Time as T
+import Daml.Script
 
 data QuoteStatus = Indicative | Firm
   deriving (Eq, Show)
@@ -38,6 +39,11 @@ template Quote
         cashEntryCid <- create CashEntry with issuer; client; amount = -price; observers
         return (optionCid, cashEntryCid)
 
+    choice Disclose : ContractId Quote
+      with
+        newObservers : [Party]
+      controller issuer
+      do create this with observers = this.observers ++ newObservers
 
 template Option
   with
@@ -199,17 +205,10 @@ fetchAndArchive cid = do
   archive cid
   return c
 
+main = script do
 
-discloseQuote : ContractId Quote -> [Party] -> Update (ContractId Quote)
-discloseQuote quoteCid observers = do
-  quote <- fetch quoteCid
-  archive quoteCid
-  create quote with observers = quote.observers ++ observers
-
-main = scenario do
-
-  issuer <- getParty "AcmeBank"
-  client <- getParty "WonkaCorp"
+  issuer <- allocateParty "AcmeBank"
+  client <- allocateParty "WonkaCorp"
 
   let underlying = "SP5"
   let expiry = D.date 2019 Feb 8
@@ -217,54 +216,52 @@ main = scenario do
   let optionData = OptionData with isin = "123"; underlying; strike = 2500.0; expiry
   let pricingData = PricingData with commission = 20.0; overhedge = 0.05
 
-  passToDate $ D.date 2019 Jan 25
+  setTime (time (D.date 2019 Jan 25) 0 0 0)
   quoteCid <- submit issuer do
-    create Quote with
+    createCmd Quote with
       quoteId = "123_0"; issuer; client; optionData
       price = 55.0; status = Firm; observers = []
-  (optionCid, cashEntry1Cid) <- submit client do exercise quoteCid Fill
+  (optionCid, cashEntry1Cid) <- submit client do exerciseCmd quoteCid Fill
 
-  passToDate $ D.date 2019 Feb 8
+  setTime (time (D.date 2019 Feb 8) 0 0 0)
   fixingCid <- submit issuer do
-    create Fixing with
+    createCmd Fixing with
       issuer; underlying; date = expiry
       value = 2600.0; observers = [client]
-  cashEntry2Cid <- submit issuer do exercise optionCid Expire with fixingCid
+  cashEntry2Cid <- submit issuer do exerciseCmd optionCid Expire with fixingCid
 
-  submit issuer do
-    cashEntry1 <- fetch cashEntry1Cid
-    assertMsg "issuer ok" $ cashEntry1.issuer == issuer
-    assertMsg "client ok" $ cashEntry1.client == client
-    assertMsg "amount ok" $ cashEntry1.amount == -55.0
+  Some cashEntry1 <- queryContractId issuer cashEntry1Cid
+  assertMsg "issuer ok" $ cashEntry1.issuer == issuer
+  assertMsg "client ok" $ cashEntry1.client == client
+  assertMsg "amount ok" $ cashEntry1.amount == -55.0
 
-    cashEntry2 <- fetch cashEntry2Cid
-    assertMsg "issuer ok" $ cashEntry2.issuer == issuer
-    assertMsg "client ok" $ cashEntry2.client == client
-    assertMsg "amount ok" $ cashEntry2.amount == 100.0
+  Some cashEntry2 <- queryContractId issuer cashEntry2Cid
+  assertMsg "issuer ok" $ cashEntry2.issuer == issuer
+  assertMsg "client ok" $ cashEntry2.client == client
+  assertMsg "amount ok" $ cashEntry2.amount == 100.0
 
 
-  agent <- getParty "Alice"
-  trader <- getParty "Tom"
-  agentCid <- submit issuer do create Agent with issuer; agent
-  traderCid <- submit issuer do create Trader with issuer; trader
+  agent <- allocateParty "Alice"
+  trader <- allocateParty "Tom"
+  agentCid <- submit issuer do createCmd Agent with issuer; agent
+  traderCid <- submit issuer do createCmd Trader with issuer; trader
 
   (pricingCid, quoteCid) <- submit agent do
-    exercise agentCid Agent_Quote with
+    exerciseCmd agentCid Agent_Quote with
       quoteId = "123_0"; client; optionData; pricingData
       price = 50.0; trader; observers = []
   quoteCid <- submit trader do
-    exercise traderCid Trader_Quote with quoteCid; price = 55.0
+    exerciseCmd traderCid Trader_Quote with quoteCid; price = 55.0
 
 
-  clerk <- getParty "Charlie"
-  supervisor <- getParty "Sarah"
-  clerkCid <- submit client do create Clerk with client; clerk
-  supervisorCid <- submit client do create Supervisor with client; supervisor
+  clerk <- allocateParty "Charlie"
+  supervisor <- allocateParty "Sarah"
+  clerkCid <- submit client do createCmd Clerk with client; clerk
+  supervisorCid <- submit client do createCmd Supervisor with client; supervisor
 
-  quoteCid <- submit issuer do discloseQuote quoteCid [clerk, supervisor]
+  quoteCid <- submit issuer do exerciseCmd quoteCid (Disclose [clerk, supervisor])
   requestCid <- submit clerk do
-    exercise clerkCid Clerk_Request with quoteCid; observers = [supervisor]
+    exerciseCmd clerkCid Clerk_Request with quoteCid; observers = [supervisor]
   (optionCid, cashEntry1Cid) <- submit supervisor do
-    exercise supervisorCid Supervisor_Accept with requestCid
-
+    exerciseCmd supervisorCid Supervisor_Accept with requestCid
   return ()

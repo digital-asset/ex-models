@@ -3,6 +3,8 @@
 
 module Onboard where
 
+import Daml.Script
+
 template Task
   with
     id : Text
@@ -21,12 +23,12 @@ template Task
       controller checker
       do return ()
 
-onboarding = scenario do
-  hr <- getParty "HR"
-  [alice, supervisor] <- mapA getParty ["Alice", "Supervisor"]
+onboarding = script do
+  hr <- allocateParty "HR"
+  [alice, supervisor] <- mapA allocateParty ["Alice", "Supervisor"]
 
   taskCid <- submit hr do
-    create Task with
+    createCmd Task with
       id = "onboard"
       description = "Complete the onboarding process"
       assigner = hr
@@ -36,40 +38,39 @@ onboarding = scenario do
   -- PART 2: supervisor splits the task up. Creates his own workflow "SubTasks" below
   let
     departmentNames = ["IT", "Engineering", "Operations", "Compliance"]
-    departmentToSubTask d = do
-      dep <- getParty d
+    departmentToSubTask dep d = do
       return $ Task with
           id = d <> "_onboard"
           description = "Complete " <> d <> " onboarding"
           assigner = supervisor
           assignee = alice
           checker = dep
-  [it, eng, ops, com] <- mapA getParty departmentNames
-  subtasks <- mapA departmentToSubTask departmentNames
+  depParties@[it, eng, ops, com] <- mapA allocateParty departmentNames
+  subtasks <- mapA (uncurry departmentToSubTask) (zip depParties departmentNames)
   let subtaskKeys = map (\st -> st.id) subtasks
 
   [itOb, engOb, opsOb, comOb] <- submit supervisor do
-    mapA (\st -> create st) subtasks
+    mapA (\st -> createCmd st) subtasks
 
+  Some task <- queryContractId supervisor taskCid
   subTasksCid <- submit supervisor do
-    task <- fetch taskCid
-    create SubTasks with
+    createCmd SubTasks with
       task
       subtaskKeys
 
   -- Alice can't sign complete her onboarding as there are tasks remaining
   submitMustFail alice do
-    exercise subTasksCid CompleteTask
+    exerciseCmd subTasksCid CompleteTask
 
   -- Alice completes her tasks one by one and people sign off
-  submit it do exercise itOb SignOff
-  submit eng do exercise engOb SignOff
-  submit ops do exercise opsOb SignOff
-  submit com do exercise comOb SignOff
+  submit it do exerciseCmd itOb SignOff
+  submit eng do exerciseCmd engOb SignOff
+  submit ops do exerciseCmd opsOb SignOff
+  submit com do exerciseCmd comOb SignOff
 
   -- Now alice can complete her onboarding
   submit alice do
-    exercise subTasksCid CompleteTask
+    exerciseCmd subTasksCid CompleteTask
 
 
 template SubTasks

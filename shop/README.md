@@ -18,23 +18,23 @@ da compile
 ```
 
 ## Testing
-To test all scenarios:
+To test all scripts:
 ```
 da run damlc -- test daml/ApprovalChain.daml
 ```
 
-This example follows a behaviour-driven (aka scenario-based) testing approach and implements useful helpers, which are explained in the following.
+This example follows a behaviour-driven (aka script-based) testing approach and implements useful helpers, which are explained in the following.
 
 ### Test definition
 ```haskell
 data Test a b = Test with
-  given : Scenario a
-  when : a -> Scenario b
-  then_ : a -> b -> Scenario Bool
+  given : Script a
+  when : a -> Script b
+  then_ : a -> b -> Script Bool
 ```
 The `Test a b` type constructor creates a `Test` type given a fixture type `a` and a result type `b`. The type encapsulates the given, when, and then steps of a behaviour-driven test and allows for a generic `run` function to be defined:
 ```haskell
-run : Test a b -> Scenario ()
+run : Test a b -> Script ()
 run test = do
   fixture <- test.given
   result <- test.when fixture
@@ -44,7 +44,7 @@ run test = do
 In the following each field of the `Test` type is explained in more detail.
 
 ### Test setup
-The `given` field with signature `Scenario a` provides a fixture object of type `a` when bound. The fixture scenario is responsible for setting up all contracts required at the start of each test. These contracts should be bundled in a record type so they can be brought into scope conveniently via record wildcard pattern matching. Here is an example of a fixture type and a corresponding scenario:
+The `given` field with signature `Script a` provides a fixture object of type `a` when bound. The fixture script is responsible for setting up all contracts required at the start of each test. These contracts should be bundled in a record type so they can be brought into scope conveniently via record wildcard pattern matching. Here is an example of a fixture type and a corresponding script:
 ```haskell
 data Fixture = Fixture with
   operator : Party
@@ -52,30 +52,30 @@ data Fixture = Fixture with
   owner : Party
   amount : Decimal
 
-given_fixture : Scenario Fixture
+given_fixture : Script Fixture
 given_fixture = do
-  operator <- getParty "Operator"
-  issuer <- getParty "Issuer"
-  owner <- getParty "Owner"
+  operator <- allocateParty "Operator"
+  issuer <- allocateParty "Issuer"
+  owner <- allocateParty "Owner"
   let amount = 10.0
   pure Fixture with ..
 ```
 
 ### Test action
-The `when` field with signature `a -> Scenario b` is a function that takes a fixture of type `a` and returns a scenario that provides a result of type `b` when bound. This function is responsible to execute the actual test. Any test result that needs to be verified should be encapsulated in the result type `b` which can be a record type specifically created for this purpose or simply a domain object of your model. Here is an example of an action with a result type `Iou`:
+The `when` field with signature `a -> Script b` is a function that takes a fixture of type `a` and returns a script that provides a result of type `b` when bound. This function is responsible to execute the actual test. Any test result that needs to be verified should be encapsulated in the result type `b` which can be a record type specifically created for this purpose or simply a domain object of your model. Here is an example of an action with a result type `Iou`:
 ```haskell
-when_action : Fixture -> Scenario Iou
+when_action : Fixture -> Script Iou
 when_action fix =
   let Fixture{..} = fix
-  iouId <- submit issuer do create Iou with issuer; owner; amount
-  iou <- submit issuer do fetch iouId
+  iouId <- submit issuer do createCmd Iou with issuer; owner; amount
+  Some iou <- queryContractId issuer iouId
   pure iou
 ```
 
 ### Test condition
-The `then_` field with signature `a -> b -> Scenario Bool` is a function taking a fixture of type `a` and a result of type `b`, and returns a scenario that provides a boolean test result. The function is responsible for verifying the test result against the expectiations. Here is an example verifying that the Iou created in the `when` step above does in fact have the expected amount speficied in the `fixture`:
+The `then_` field with signature `a -> b -> Script Bool` is a function taking a fixture of type `a` and a result of type `b`, and returns a script that provides a boolean test result. The function is responsible for verifying the test result against the expectiations. Here is an example verifying that the Iou created in the `when` step above does in fact have the expected amount speficied in the `fixture`:
 ```haskell
-then_condition : Fixture -> Iou -> Scenario Bool
+then_condition : Fixture -> Iou -> Script Bool
 then_condition fix res =
   pure $ res.amount == fix.amount
 ```
@@ -96,7 +96,7 @@ The main benefit of splitting up a test like this is the ability to reuse indivi
 ## Running
 To load the project into the sandbox and start navigator:
 ```
-da start
+daml start
 ```
 
 ## Contributing

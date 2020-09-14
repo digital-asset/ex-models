@@ -3,6 +3,8 @@
 
 module ExpensePool where
 
+import Daml.Script
+
 data Expense = Expense
   with
     name : Text
@@ -36,7 +38,7 @@ template Pool
       do
         assert $ elem participant participants
         create PoolInvite with pool = this; participant = newParticipant
-      
+
     choice Declare : ContractId Pool
       with
         participant : Party
@@ -47,7 +49,7 @@ template Pool
         let amount = expense.amount / (intToDecimal $ length participants)
         let payers = filter (/= expense.payer) participants
         let newIous = map (\p -> Iou with issuer = p; owner = expense.payer; amount; currency = expense.currency) payers
-        let resultingIous = foldl insertIou ious newIous 
+        let resultingIous = foldl insertIou ious newIous
         create this with ious = resultingIous
 
     choice Split : [ContractId Iou]
@@ -90,20 +92,20 @@ insertIou ious new =
         g :: [] -> (netIou g new) :: (filter (/= g) ious)
         _ -> new :: ious
 
-validPoolSplit = scenario do
-  a <- getParty "A"
-  b <- getParty "B"
-  c <- getParty "C"
-  poolId <- submit a do create Pool with participants = [a]; name = "Holiday"; ious = []
-  inviteId <- submit a do exercise poolId Invite with participant = a; newParticipant = b
-  poolId <- submit b do exercise inviteId Accept
-  inviteId <- submit b do exercise poolId Invite with participant = b; newParticipant = c
-  poolId <- submit c do exercise inviteId Accept
+validPoolSplit = script do
+  a <- allocateParty "A"
+  b <- allocateParty "B"
+  c <- allocateParty "C"
+  poolId <- submit a do createCmd Pool with participants = [a]; name = "Holiday"; ious = []
+  inviteId <- submit a do exerciseCmd poolId Invite with participant = a; newParticipant = b
+  poolId <- submit b do exerciseCmd inviteId Accept
+  inviteId <- submit b do exerciseCmd poolId Invite with participant = b; newParticipant = c
+  poolId <- submit c do exerciseCmd inviteId Accept
 
   let expA = Expense with name = "Car"; amount = 1.5; currency = "USD"; payer = a
       expB = Expense with name = "Hotel"; amount = 3.0; currency = "USD"; payer = b
       expC = Expense with name = "Food"; amount = 4.5; currency = "USD"; payer = c
-  poolId <- submit a do exercise poolId Declare with participant = a; expense = expA
-  poolId <- submit b do exercise poolId Declare with participant = b; expense = expB
-  poolId <- submit c do exercise poolId Declare with participant = c; expense = expC
-  submit a do exercise poolId Split with participant = a
+  poolId <- submit a do exerciseCmd poolId Declare with participant = a; expense = expA
+  poolId <- submit b do exerciseCmd poolId Declare with participant = b; expense = expB
+  poolId <- submit c do exerciseCmd poolId Declare with participant = c; expense = expC
+  submit a do exerciseCmd poolId Split with participant = a

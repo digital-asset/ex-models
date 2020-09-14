@@ -3,20 +3,22 @@
 
 module Test where
 
+import Daml.Script
+
 import TicTacToe
 
 -- A convenience function to shorten the exercise commands
-play : Party -> Int -> Int -> ContractId Game -> Scenario TurnResult
+play : Party -> Int -> Int -> ContractId Game -> Script TurnResult
 play p x y gameId = do
-  submit p do exercise gameId Play with x; y
+  submit p do exerciseCmd gameId Play with x; y
 
-nestedCase = scenario do
-  p1 <- getParty "Player1"
-  p2 <- getParty "Player2"
-  inviteId <- submit p1 do create GameInvite with player1 = p1; player2 = p2; size = 3
-  gameId <- submit p2 do exercise inviteId Accept
+nestedCase = script do
+  p1 <- allocateParty "Player1"
+  p2 <- allocateParty "Player2"
+  inviteId <- submit p1 do createCmd GameInvite with player1 = p1; player2 = p2; size = 3
+  gameId <- submit p2 do exerciseCmd inviteId Accept
   either <- play p1 0 0 gameId
-  let resultScenario =
+  let resultScript =
         case either of
           Left resId -> pure $ Left resId
           Right gameId -> do
@@ -36,14 +38,14 @@ nestedCase = scenario do
                         case either of
                           Left resId -> pure $ Left resId
                           Right gameId -> pure $ Right gameId
-  assertResult p1 (Winner p1) resultScenario
+  assertResult p1 (Winner p1) resultScript
 
 -- Takes an Either
 -- and fails if it's a Result
--- or returns the game contract id as scenario if it's a Game
-assertGame : Scenario TurnResult -> Scenario (ContractId Game)
-assertGame eitherScenario = do
-  either <- eitherScenario
+-- or returns the game contract id as script if it's a Game
+assertGame : Script TurnResult -> Script (ContractId Game)
+assertGame eitherScript = do
+  either <- eitherScript
   case either of
     Left _ -> fail "Expected result, but got game"
     Right gameId -> do pure gameId
@@ -51,73 +53,73 @@ assertGame eitherScenario = do
 -- Takes the result of a play function call
 -- and fails if it's a Game
 -- or verifies the expected outcome if it's a Result
-assertResult : Party -> Outcome -> Scenario TurnResult -> Scenario (ContractId Result)
-assertResult p outcome eitherScenario = do
-  either <- eitherScenario
+assertResult : Party -> Outcome -> Script TurnResult -> Script (ContractId Result)
+assertResult p outcome eitherScript = do
+  either <- eitherScript
   case either of
     Left resultId ->
       do
-        result <- submit p do fetch resultId
+        Some result <- queryContractId p resultId
         assert $ result.outcome == outcome
         pure resultId
     Right _ -> do fail "Expected result, but got game"
 
-assertEachStep = scenario do
-  p1 <- getParty "Player1"
-  p2 <- getParty "Player2"
-  inviteId <- submit p1 do create GameInvite with player1 = p1; player2 = p2; size = 3
-  gameId <- submit p2 do exercise inviteId Accept
+assertEachStep = script do
+  p1 <- allocateParty "Player1"
+  p2 <- allocateParty "Player2"
+  inviteId <- submit p1 do createCmd GameInvite with player1 = p1; player2 = p2; size = 3
+  gameId <- submit p2 do exerciseCmd inviteId Accept
   gameId <- assertGame $ play p1 0 0 gameId
   gameId <- assertGame $ play p2 1 1 gameId
   gameId <- assertGame $ play p1 0 1 gameId
   gameId <- assertGame $ play p2 2 2 gameId
   assertResult p1 (Winner p1) $ play p1 0 2 gameId
 
--- Takes an Either and a function f from game id to Scenario Either
+-- Takes an Either and a function f from game id to Script Either
 -- and returns the result if it's a Result
 -- or returns f applied to the Either
-(>>?) : Scenario TurnResult -> (ContractId Game -> Scenario TurnResult) -> Scenario TurnResult
-(>>?) eitherScenario f =
+(>>?) : Script TurnResult -> (ContractId Game -> Script TurnResult) -> Script TurnResult
+(>>?) eitherScript f =
   do
-    either <- eitherScenario
+    either <- eitherScript
     case either of
       Left resId -> pure $ Left resId
       Right gameId -> f gameId
 
-monadicBind = scenario do
-  p1 <- getParty "Player1"
-  p2 <- getParty "Player2"
-  inviteId <- submit p1 do create GameInvite with player1 = p1; player2 = p2; size = 3
-  gameId <- submit p2 do exercise inviteId Accept
-  let finalScenario =
+monadicBind = script do
+  p1 <- allocateParty "Player1"
+  p2 <- allocateParty "Player2"
+  inviteId <- submit p1 do createCmd GameInvite with player1 = p1; player2 = p2; size = 3
+  gameId <- submit p2 do exerciseCmd inviteId Accept
+  let finalScript =
         play p1 0 0 gameId
           >>? play p2 1 1
           >>? play p1 0 1
           >>? play p2 2 2
           >>? play p1 0 2
-  assertResult p1 (Winner p1) finalScenario
+  assertResult p1 (Winner p1) finalScript
 
 -- Allows to chain game turns in the Either monad when bound with p, x, and y
-play2 : Party -> Int -> Int -> TurnResult -> Scenario TurnResult
+play2 : Party -> Int -> Int -> TurnResult -> Script TurnResult
 play2 p x y either = do
   case either of
     Left resId -> pure $ Left resId
-    Right gameId -> submit p do exercise gameId Play with x; y
+    Right gameId -> submit p do exerciseCmd gameId Play with x; y
 
-eitherMonad = scenario do
-  p1 <- getParty "Player1"
-  p2 <- getParty "Player2"
-  inviteId <- submit p1 do create GameInvite with player1 = p1; player2 = p2; size = 3
-  gameId <- submit p2 do exercise inviteId Accept
-  let finalScenario =
+eitherMonad = script do
+  p1 <- allocateParty "Player1"
+  p2 <- allocateParty "Player2"
+  inviteId <- submit p1 do createCmd GameInvite with player1 = p1; player2 = p2; size = 3
+  gameId <- submit p2 do exerciseCmd inviteId Accept
+  let finalScript =
         play p1 0 0 gameId
         >>= play2 p2 1 1
         >>= play2 p1 0 1
         >>= play2 p2 2 2
         >>= play2 p1 0 2
-  assertResult p1 (Winner p1) finalScenario
+  assertResult p1 (Winner p1) finalScript
 
-allScenarios = scenario do
+allScripts = script do
   nestedCase
   assertEachStep
   monadicBind

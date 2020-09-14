@@ -3,6 +3,8 @@
 
 module ApprovalChain where
 
+import Daml.Script
+
 data Content = Content
   with
     originator : Party
@@ -51,19 +53,19 @@ template FullyApproved
   where
     signatory content.originator, content.level1Approver, content.level2Approver, content.level3Approver
 
-validApproval = scenario do
-  o <- getParty "Originator"
-  a <- getParty "A"
-  b <- getParty "B"
-  c <- getParty "C"
+validApproval = script do
+  o <- allocateParty "Originator"
+  a <- allocateParty "A"
+  b <- allocateParty "B"
+  c <- allocateParty "C"
   let content = Content with
         originator = o
         text = "Text to approve"
         level1Approver = a
         level2Approver = b
         level3Approver = c
-  proposed <- submit o do create Proposed with content
-  l1Approved <- submit a do exercise proposed Level1Approve
-  l2Approved <- submit b do exercise l1Approved Level2Approve
-  fullyApproved <- submit c do exercise l2Approved Level3Approve
+  proposed <- submit o do createCmd Proposed with content
+  l1Approved <- submit a do exerciseCmd proposed Level1Approve
+  l2Approved <- submit b do exerciseCmd l1Approved Level2Approve
+  fullyApproved <- submit c do exerciseCmd l2Approved Level3Approve
   return ()
