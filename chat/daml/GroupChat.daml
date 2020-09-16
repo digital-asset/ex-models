@@ -2,6 +2,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ApplicativeDo #-}
 
 -- DAML chat-room model, with support for multiple chat-groups with entry by invitation.
 
@@ -9,8 +10,10 @@ module GroupChat where
 
 import DA.Action as A
 import DA.Date
+import DA.Foldable (forA_)
 import DA.List
 import DA.Time
+import Daml.Script
 
 -- `exerciseWhenKey` is like `exerciseByKey`, except that it uses `lookupByKey`
 -- instead of `fetchByKey`. On the one hand, that means it doesn't fail if the
@@ -105,7 +108,7 @@ template MessageIndex
         newGid : GID
       controller gid.members, newGid.members
       do
-        A.forA messageIds (\id -> do
+        forA_ messageIds (\id -> do
           (mCid, m) <- fetchByKey @Message MID with ..
           exercise mCid M_ChangeGID with newGid
           )
@@ -116,11 +119,10 @@ template MessageIndex
     controller gid.members can
       ArchiveIndex : ()
         do
-          A.forA messageIds (\id -> do
+          forA_ messageIds (\id -> do
             (mCid, m) <- fetchByKey @Message MID with ..
             archive mCid
             )
-          return ()
 
 -- | Template for a chat group. A new group can be started by anyone by creating
 -- an instance of `ChatGroup`.
@@ -141,7 +143,7 @@ template ChatGroup
         newGid : GID
       controller gid.members, newGid.members
       do
-        A.forA (gid.members ++ pastMembers) (\poster -> do
+        forA_ (gid.members ++ pastMembers) (\poster -> do
           exerciseWhenKey @MessageIndex (gid, poster) MI_ChangeGID with newGid
           )
         create this with
@@ -192,10 +194,9 @@ template ChatGroup
       -- as assocuated indices and messages.
       ArchiveGroup : ()
         do
-          A.forA (gid.members ++ pastMembers) (\poster -> do
+          forA_ (gid.members ++ pastMembers) (\poster -> do
             exerciseWhenKey @MessageIndex (gid, poster) ArchiveIndex
             )
-          return ()
 
       -- A conveniance choice to dynamically create `MessageIndex` contracts if not
       -- Already present on ledger
@@ -235,12 +236,12 @@ template GroupMembershipRequest
             member
             newMember
 
-setup_chat = scenario do
-  parties@[alice, bob, charlie] <- A.mapA getParty ["Alice", "Bob", "Charlie"]
-  passToDate (date 2019 Jul 01)
+setup_chat = script do
+  parties@[alice, bob, charlie] <- A.mapA allocateParty ["Alice", "Bob", "Charlie"]
+  setTime (time (date 2019 Jul 01) 0 0 0)
 
   g <- submit alice do
-    create ChatGroup with
+    createCmd ChatGroup with
       gid = GID with
         id = "troll-bot"
         members = [alice]
@@ -248,130 +249,133 @@ setup_chat = scenario do
 
   return (parties, g)
 
-first_post = scenario do
+first_post = script do
   s@(parties@[alice, bob, charlie], g) <- setup_chat
 
   submit alice do
-    exercise g Post_Message with
+    exerciseCmd g Post_Message with
       poster = alice
       id = "1"
       text = "first post"
 
   return s
 
-onboard_bob = scenario do
+onboard_bob = script do
   s@(parties@[alice, bob, charlie], g) <- first_post
-  pass(days 1)
+  passTime (days 1)
 
   rb <- submit bob do
-    create GroupMembershipRequest
+    createCmd GroupMembershipRequest
       with
         groupId = "troll-bot"
         member = alice
         newMember = bob
 
   g <- submit alice do
-    exercise rb Onboard with groupCid = g
+    exerciseCmd rb Onboard with groupCid = g
 
   submit bob do
-    exercise g Post_Message with
+    exerciseCmd g Post_Message with
       poster = bob
       id = "1"
       text = "Hey Alice!"
 
   return (parties, g)
 
-second_post = scenario do
+second_post = script do
   s@(parties@[alice, bob, charlie], g) <- onboard_bob
-  pass(minutes 3)
+  passTime (minutes 3)
 
   submit alice do
-    exercise g Post_Message with
+    exerciseCmd g Post_Message with
       poster = alice
       id = "2"
       text = "Hey Bob, I'm good and you?"
 
   return s
 
-onboard_charlie = scenario do
+onboard_charlie = script do
   s@(parties@[alice, bob, charlie], g) <- second_post
-  pass (days 1)
+  passTime (days 1)
 
   rc <- submit charlie do
-    create GroupMembershipRequest
+    createCmd GroupMembershipRequest
       with
         groupId = "troll-bot"
         member = alice
         newMember = charlie
 
   g <- submit alice do
-    exercise rc Onboard with groupCid = g
+    exerciseCmd rc Onboard with groupCid = g
 
   return (parties, g)
 
-quit_bob = scenario do
+quit_bob = script do
   s@(parties@[alice, bob, charlie], g) <- onboard_charlie
-  pass (seconds 10)
+  passTime (seconds 10)
 
   g <- submit bob do
-    exercise g Post_Message with
+    exerciseCmd g Post_Message with
       poster = bob
       id = "2"
       text = "Ugh, not that guy, why did you let him in?"
-    exercise g LeaveGroup with
+    g <- exerciseCmd g LeaveGroup with
       member = bob
+    pure g
 
   return (parties, g)
 
-rejoin_requit_bob = scenario do
+rejoin_requit_bob = script do
   s@(parties@[alice, bob, charlie], g) <- quit_bob
-  pass (seconds 10)
+  passTime (seconds 10)
 
   submit charlie do
-    exercise g Post_Message with
+    exerciseCmd g Post_Message with
       poster = charlie
       id = "1"
       text = "What's his problem?!"
 
   rb <- submit bob do
-    create GroupMembershipRequest
+    createCmd GroupMembershipRequest
       with
         groupId = "troll-bot"
         member = alice
         newMember = bob
 
-  pass (seconds 10)
+  passTime (seconds 10)
   g <- submit alice do
-    exercise rb Onboard with groupCid = g
+    exerciseCmd rb Onboard with groupCid = g
 
   g <- submit bob do
-    exercise g Post_Message with
+    exerciseCmd g Post_Message with
       poster = bob
       id = "3"
       text = "Alice, come on, let's start a new group without Charlie!"
-    exercise g LeaveGroup with
+    g <- exerciseCmd g LeaveGroup with
       member = bob
+    pure g
 
   return (parties, g)
 
-quit_alice = scenario do
+quit_alice = script do
   s@(parties@[alice, bob, charlie], g) <- rejoin_requit_bob
-  pass (seconds 10)
+  passTime (seconds 10)
 
 
   g <- submit alice do
-    exercise g Post_Message with
+    exerciseCmd g Post_Message with
       poster = alice
       id = "3"
       text = "Without Bob, this group isn't worth running."
-    exercise g LeaveGroup with
+    g <- exerciseCmd g LeaveGroup with
       member = alice
+    pure g
 
   return (parties, g)
 
-archive_charlie = scenario do
+archive_charlie = script do
   s@(parties@[alice, bob, charlie], g) <- quit_alice
-  pass (seconds 10)
+  passTime (seconds 10)
 
   submit charlie do
-    exercise g ArchiveGroup
+    exerciseCmd g ArchiveGroup

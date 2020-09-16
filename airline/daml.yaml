@@ -1,4 +1,4 @@
-sdk-version: 1.2.0
+sdk-version: 1.5.0
 name: airline
 version: 1.0.0
 source: daml
@@ -12,3 +12,5 @@ parties:
 dependencies:
 - daml-prim
 - daml-stdlib
+- daml-script
+

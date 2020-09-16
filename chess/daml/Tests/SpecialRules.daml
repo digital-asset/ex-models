@@ -6,6 +6,7 @@ module Tests.SpecialRules where
 import DA.Next.Map as M
 import DA.Either
 import DA.Optional
+import Daml.Script
 
 import Chess
 import Init
@@ -15,11 +16,11 @@ import Rules.Data
 
 import Tests.Chess
 
-testCastle = scenario do
+testCastle = script do
   InitData {..} <- initData
 
   submitMustFail white do
-    exercise game Move with
+    exerciseCmd game Move with
           move = ChessMove with
             from = E1
             to = G1
@@ -39,7 +40,7 @@ testCastle = scenario do
   kingCastle <- case game of
     Right g -> do
       submit white do
-        exercise g Move with
+        exerciseCmd g Move with
           move = ChessMove with
             from = E1
             to = G1
@@ -49,7 +50,7 @@ testCastle = scenario do
 
   case kingCastle of
     Right g -> do
-      kc <- submit white do fetch g
+      Some kc <- queryContractId white g
       let
         t = do
           sm <- mapState kc.state
@@ -64,11 +65,11 @@ testCastle = scenario do
         Right _ -> assert True
     Left _ -> abort "Game should be in play"
 
-testCheck = scenario do
+testCheck = script do
   InitData {..} <- initData
 
   submitMustFail white do
-    exercise game Move with
+    exerciseCmd game Move with
           move = ChessMove with
             from = E1
             to = G1
@@ -85,7 +86,7 @@ testCheck = scenario do
   check <- case game of
     Right g -> do
       submit black do
-        exercise g Move with
+        exerciseCmd g Move with
           move = ChessMove with
             from = D8
             to = H4
@@ -95,15 +96,15 @@ testCheck = scenario do
 
   case check of
     Right g -> do
-      c <- submit white do fetch g
+      Some c <- queryContractId white g
       assertMsg "White should be checked" (c.state.everCheck == (True, False))
     Left _ -> abort "Game should be in play"
 
-testEnPassant = scenario do
+testEnPassant = script do
   InitData {..} <- initData
 
   submitMustFail white do
-    exercise game Move with
+    exerciseCmd game Move with
           move = ChessMove with
             from = B2
             to = C3
@@ -121,7 +122,7 @@ testEnPassant = scenario do
   enPassant <- case game of
     Right g -> do
       submit white do
-        exercise g Move with
+        exerciseCmd g Move with
           move = ChessMove with
             from = B5
             to = C6
@@ -131,7 +132,7 @@ testEnPassant = scenario do
 
   case enPassant of
     Right g -> do
-      ep <- submit white do fetch g
+      Some ep <- queryContractId white g
       let
         t = do
           sm <- mapState ep.state
@@ -141,11 +142,11 @@ testEnPassant = scenario do
         Right _ -> assert True
     Left _ -> abort "Game should be in play"
 
-testPromote = scenario do
+testPromote = script do
   InitData {..} <- initData
 
   submitMustFail white do
-    exercise game Move with
+    exerciseCmd game Move with
           move = ChessMove with
             from = B2
             to = C3
@@ -171,7 +172,7 @@ testPromote = scenario do
   promote <- case game of
     Right g -> do
       submit white do
-        exercise g Move with
+        exerciseCmd g Move with
           move = ChessMove with
             from = A7
             to = A8
@@ -181,7 +182,7 @@ testPromote = scenario do
 
   case promote of
     Right g -> do
-      p <- submit white do fetch g
+      Some p <- queryContractId white g
       let
         t = do
           sm <- mapState p.state

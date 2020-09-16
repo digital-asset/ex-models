@@ -19,7 +19,7 @@ daml build
 ```
 
 ## Testing
-To test all scenarios:
+To test all scripts:
 ```
 daml test --color
 ```

@@ -5,6 +5,7 @@ module Voting where
 
 import DA.Next.Set as S
 import DA.List as L
+import Daml.Script
 
 data Proposal = Proposal
   with
@@ -65,20 +66,20 @@ template Decision
   where
     signatory government, voters
 
-validVote = scenario do
-  g <- getParty "Government"
-  a <- getParty "A"
-  b <- getParty "B"
-  c <- getParty "C"
-  p <- getParty "Proposer"
+validVote = script do
+  g <- allocateParty "Government"
+  a <- allocateParty "A"
+  b <- allocateParty "B"
+  c <- allocateParty "C"
+  p <- allocateParty "Proposer"
   let proposal = Proposal with proposer = p; text = "My Proposal"
   let ballotKey = (g, proposal)
-  submit g do create Ballot with government = g; proposal; voters = S.empty; voted = S.empty; votes = []
-  submit g do exerciseByKey @Ballot ballotKey Add with voter = a
-  submit g do exerciseByKey @Ballot ballotKey Add with voter = b
-  submit g do exerciseByKey @Ballot ballotKey Add with voter = c
-  submit a do exerciseByKey @Ballot ballotKey Vote with voter = a; accept = True
-  submit b do exerciseByKey @Ballot ballotKey Vote with voter = b; accept = True
-  submit c do exerciseByKey @Ballot ballotKey Vote with voter = c; accept = True
-  decision <- submit g do exerciseByKey @Ballot ballotKey Decide
+  submit g do createCmd Ballot with government = g; proposal; voters = S.empty; voted = S.empty; votes = []
+  submit g do exerciseByKeyCmd @Ballot ballotKey Add with voter = a
+  submit g do exerciseByKeyCmd @Ballot ballotKey Add with voter = b
+  submit g do exerciseByKeyCmd @Ballot ballotKey Add with voter = c
+  submit a do exerciseByKeyCmd @Ballot ballotKey Vote with voter = a; accept = True
+  submit b do exerciseByKeyCmd @Ballot ballotKey Vote with voter = b; accept = True
+  submit c do exerciseByKeyCmd @Ballot ballotKey Vote with voter = c; accept = True
+  decision <- submit g do exerciseByKeyCmd @Ballot ballotKey Decide
   return ()

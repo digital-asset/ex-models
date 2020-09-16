@@ -4,6 +4,7 @@
 module Broadcast where
 
 import DA.Action
+import Daml.Script
 
 data Something = Something with
   deriving (Eq, Show)
@@ -112,9 +113,9 @@ template Broadcast
           bs <- exercise reqCid AcceptSubscription with currentDataCid
           return (bc, bs)
 
-test_broadcast = scenario do
-  broadcaster <- getParty "Alice"
-  subscribers <- mapA getParty $ map (\i -> "Subscriber" <> show i) [1..5]
+test_broadcast = script do
+  broadcaster <- allocateParty "Alice"
+  subscribers <- mapA allocateParty $ map (\i -> "Subscriber" <> show i) [1..5]
 
   let
     broadcast = BroadcastKey with
@@ -122,27 +123,27 @@ test_broadcast = scenario do
       id = "Broadcast"
 
   dataCid <- submit broadcaster do
-    create BroadcastData with
+    createCmd BroadcastData with
       broadcast
       payload = Something with
 
   bcCid <- submit broadcaster do
-    create Broadcast with
+    createCmd Broadcast with
       broadcast
       subscribers = []
 
   let
     addSubscriber subscriber (bcCid : ContractId Broadcast) = do
       reqCid <- submit subscriber do
-        create SubscriptionRequest with
+        createCmd SubscriptionRequest with
           broadcast
           subscriber
       (newBcCid, _) <- submit broadcaster do
-        exercise bcCid AddSubscriber with reqCid
+        exerciseCmd bcCid AddSubscriber with reqCid
       return newBcCid
     updateData (bcCid : ContractId Broadcast) = do
       submit broadcaster do
-        exercise bcCid BroadcastUpdate with
+        exerciseCmd bcCid BroadcastUpdate with
           newPayload = Something with
     addAndUpdate (bcCid : ContractId Broadcast) subscriber = do
       newBcCid <- addSubscriber subscriber bcCid

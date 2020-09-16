@@ -4,6 +4,7 @@
 module Tests.Rules where
 
 import DA.Assert
+import Daml.Script
 
 import Types
 
@@ -12,21 +13,21 @@ import Rules.Main
 import Rules.Path
 import Rules.Util
 
-initStateMap = scenario do
+initStateMap = script do
   case mapState $ initState () of
     Left e -> abort e
     Right _ -> return ()
 
-initStateWin = scenario do
+initStateWin = script do
   case checkWin $ initState () of
     None -> return ()
     Some p -> abort $ show p
 
-testIntCoord = scenario do
+testIntCoord = script do
   toIntCoord C1 === (2, 0)
   toIntCoord H8 === (7, 7)
 
-testCheckWin = scenario do
+testCheckWin = script do
   let
     filterNot f = filter (not . f)
     rmBlackKing = filterNot (\p -> p.tp == King && p.owner == Black)
@@ -39,7 +40,7 @@ testCheckWin = scenario do
   checkWin whiteWin === Some White
   checkWin blackWin === Some Black
 
-testPathBetween = scenario do
+testPathBetween = script do
   pathBetween (2,2) (4,4) === Right [(3,3)]
   pathBetween (2,2) (5,2) === Right [(3,2), (4,2)]
   pathBetween (2,2) (4,0) === Right [(3,1)]
@@ -50,7 +51,7 @@ testPathBetween = scenario do
   pathBetween (2,2) (2,5) === Right [(2,3), (2, 4)]
   pathBetween (2,2) (3,5) === Left "Not a straight path"
 
-testPawnPath = scenario do
+testPawnPath = script do
   path Pawn White False (4, 1) (4, 1) === Left "Null move is not valid"
   path Pawn White False (4, 1) (4, 2) === Right []
   path Pawn White False (4, 1) (4, 3) === Right [(4, 2)]
@@ -91,7 +92,7 @@ testPawnPath = scenario do
   path Pawn Black True (4, 5) (3, 6) === Left "Invalid move"
   path Pawn Black True (4, 5) (3, 4) === Right []
 
-testRookPath = scenario do
+testRookPath = script do
   path Rook White False (4, 1) (4, 1) === Left "Null move is not valid"
   path Rook White False (4, 1) (7, 1) === Right [(5,1), (6,1)]
   path Rook White False (4, 1) (2, 1) === Right [(3,1)]
@@ -99,7 +100,7 @@ testRookPath = scenario do
   path Rook White False (4, 1) (4, 3) === Right [(4,2)]
   path Rook White False (4, 1) (5, 2) === Left "Invalid move"
 
-testKnightPath = scenario do
+testKnightPath = script do
   path Knight White False (4, 1) (4, 1) === Left "Null move is not valid"
   path Knight White False (3, 3) (5, 4) === Right []
   path Knight White False (3, 3) (5, 2) === Right []
@@ -111,7 +112,7 @@ testKnightPath = scenario do
   path Knight White False (3, 3) (1, 2) === Right []
   path Knight White False (4, 1) (5, 2) === Left "Invalid move"
 
-testBishopPath = scenario do
+testBishopPath = script do
   path Bishop White False (4, 1) (4, 1) === Left "Null move is not valid"
   path Bishop White False (4, 1) (7, 4) === Right [(5,2), (6,3)]
   path Bishop White False (4, 1) (5, 0) === Right []
@@ -119,7 +120,7 @@ testBishopPath = scenario do
   path Bishop White False (4, 1) (2, 3) === Right [(3,2)]
   path Bishop White False (4, 1) (4, 2) === Left "Invalid move"
 
-testQueenPath = scenario do
+testQueenPath = script do
   path Queen White False (4, 1) (4, 1) === Left "Null move is not valid"
   path Queen White False (4, 1) (7, 4) === Right [(5,2), (6,3)]
   path Queen White False (4, 1) (5, 0) === Right []
@@ -131,7 +132,7 @@ testQueenPath = scenario do
   path Queen White False (4, 1) (4, 3) === Right [(4,2)]
   path Queen White False (4, 1) (5, 3) === Left "Not a straight path"
 
-testKingPath = scenario do
+testKingPath = script do
   path King White False (4, 1) (4, 1) === Left "Null move is not valid"
   path King White False (3, 3) (4, 4) === Right []
   path King White False (3, 3) (4, 3) === Right []
@@ -149,7 +150,7 @@ takeMove eg (from, to) = do
       tryMoveInner g $
         ChessMove from to None None
 
-testFoolsMateInner = scenario do
+testFoolsMateInner = script do
   let
     moves = [
       (G2, G4),
@@ -165,7 +166,7 @@ testFoolsMateInner = scenario do
     Right s -> checkWin s === Some Black
     _ -> abort $ show game
 
-testBlocked = scenario do
+testBlocked = script do
   let
     moves = [(D1, D7)]
     game = foldl takeMove (Right $ initState ()) moves

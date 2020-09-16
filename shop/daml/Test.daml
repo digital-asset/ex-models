@@ -3,6 +3,8 @@
 
 module Test where
 
+import Daml.Script
+
 import Asset
 import Shop
 
@@ -19,64 +21,64 @@ data Fixture = Fixture with
   userId : UserRelationshipId
 
 data Test a b = Test with
-  given : Scenario a
-  when : a -> Scenario b
-  then_ : a -> b -> Scenario Bool
+  given : Script a
+  when : a -> Script b
+  then_ : a -> b -> Script Bool
 
-run : Test a b -> Scenario ()
+run : Test a b -> Script ()
 run t = do
   fixture <- t.given
   result <- t.when fixture
   check <- t.then_ fixture result
   assert $ check
 
-given_a_shop : Scenario Fixture
+given_a_shop : Script Fixture
 given_a_shop = do
-  issuer <- getParty "Issuer"
-  producer <- getParty "Producer"
-  owner <- getParty "Owner"
-  vendor <- getParty "Vendor"
-  user <- getParty "User"
+  issuer <- allocateParty "Issuer"
+  producer <- allocateParty "Producer"
+  owner <- allocateParty "Owner"
+  vendor <- allocateParty "Vendor"
+  user <- allocateParty "User"
 
-  itemId <- submit producer do create Item with producer; owner = producer; label = "Apple"; quantity = 1.0; unit = "kg"; observers = []
-  itemId <- submit producer do exercise itemId TransferItem with newOwner = vendor
-  iouId <- submit issuer do create Iou with issuer; owner = issuer; amount = 3.0; currency = "USD"
-  iouId <- submit issuer do exercise iouId TransferIou with newOwner = user
+  itemId <- submit producer do createCmd Item with producer; owner = producer; label = "Apple"; quantity = 1.0; unit = "kg"; observers = []
+  itemId <- submit producer do exerciseCmd itemId TransferItem with newOwner = vendor
+  iouId <- submit issuer do createCmd Iou with issuer; owner = issuer; amount = 3.0; currency = "USD"
+  iouId <- submit issuer do exerciseCmd iouId TransferIou with newOwner = user
 
-  shopId <- submit owner do create Shop with owner; vendors = []; users = []; offerIds = []
-  (shopId, inviteId) <- submit owner do exercise shopId InviteVendor with vendor
-  vendorId <- submit vendor do exercise inviteId AcceptVendorInvite
-  (shopId, inviteId) <- submit owner do exercise shopId InviteUser with user
-  userId <- submit user do exercise inviteId AcceptUserInvite
+  shopId <- submit owner do createCmd Shop with owner; vendors = []; users = []; offerIds = []
+  (shopId, inviteId) <- submit owner do exerciseCmd shopId InviteVendor with vendor
+  vendorId <- submit vendor do exerciseCmd inviteId AcceptVendorInvite
+  (shopId, inviteId) <- submit owner do exerciseCmd shopId InviteUser with user
+  userId <- submit user do exerciseCmd inviteId AcceptUserInvite
   pure Fixture with ..
 
-when_the_vendor_offers_an_item : Fixture -> Scenario (ShopId, OfferId)
+when_the_vendor_offers_an_item : Fixture -> Script (ShopId, OfferId)
 when_the_vendor_offers_an_item f = do
-  submit f.vendor do exercise f.vendorId OfferItem with shopId = f.shopId; itemId = f.itemId; price = 1.0; currency = "USD"
+  submit f.vendor do exerciseCmd f.vendorId OfferItem with shopId = f.shopId; itemId = f.itemId; price = 1.0; currency = "USD"
 
-then_the_offer_is_added_to_the_shop : Fixture -> (ShopId, OfferId) -> Scenario Bool
+then_the_offer_is_added_to_the_shop : Fixture -> (ShopId, OfferId) -> Script Bool
 then_the_offer_is_added_to_the_shop f (shopId, offerId) = do
-  shop <- submit f.owner do fetch shopId
-  pure $ (any (== offerId) shop.offerIds)
+  Some shop <- queryContractId f.owner shopId
+  pure $ offerId `elem` shop.offerIds
 
-then_the_offer_is_visible_to_the_user : Fixture -> (ShopId, OfferId) -> Scenario Bool
+then_the_offer_is_visible_to_the_user : Fixture -> (ShopId, OfferId) -> Script Bool
 then_the_offer_is_visible_to_the_user f (shopId, offerId) = do
-  submit f.user do fetch offerId
+  Some _ <- queryContractId f.user offerId
   pure True
 
-when_an_item_is_bought : Fixture -> Scenario (ShopId, ItemId, IouId)
+when_an_item_is_bought : Fixture -> Script (ShopId, ItemId, IouId)
 when_an_item_is_bought f = do
   let Fixture{..} = f
-  (shopId, offerId) <- submit vendor do exercise vendorId OfferItem with price = 3.0; currency = "USD"; ..
-  submit user do exercise userId BuyItem with ..
+  (shopId, offerId) <- submit vendor do exerciseCmd vendorId OfferItem with price = 3.0; currency = "USD"; ..
+  submit user do exerciseCmd userId BuyItem with ..
 
-then_the_item_and_iou_exchange_hands : Fixture -> (ShopId, ItemId, IouId) -> Scenario Bool
+then_the_item_and_iou_exchange_hands : Fixture -> (ShopId, ItemId, IouId) -> Script Bool
 then_the_item_and_iou_exchange_hands f (shopId, itemId, iouId) = do
-  item <- submit f.user do fetch itemId
-  iou <- submit f.vendor do fetch iouId
+  Some item <- queryContractId f.user itemId
+  Some iou <- queryContractId f.vendor iouId
   pure $ item.owner == f.user && iou.owner == f.vendor
 
-gwt = scenario do
+gwt = script do
   let offer_added = Test with
         given = given_a_shop
         when = when_the_vendor_offers_an_item
