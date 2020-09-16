@@ -1,4 +1,4 @@
-sdk-version: 1.5.0-snapshot.20200907.5151.0.eb68e680
+sdk-version: 1.5.0
 name: expense-pool
 version: 1.0.0
 source: daml
