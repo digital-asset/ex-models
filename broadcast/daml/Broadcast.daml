@@ -31,15 +31,21 @@ template BroadcastSubscription
     subscriber : Party
   where
     signatory broadcast.broadcaster
+    observer subscriber
     key this : BroadcastSubscription
     maintainer key.broadcast.broadcaster
 
-    controller broadcast.broadcaster can
     nonconsuming choice UpdateData : (ContractId BroadcastData, BroadcastData)
       observer subscriber
       controller broadcast.broadcaster
       do
         fetchByKey @BroadcastData broadcast
+
+    nonconsuming choice FetchData : BroadcastData
+      with
+        dataCid : ContractId BroadcastData
+      controller subscriber
+      do fetch dataCid
 
 template Broadcast
   with
@@ -52,7 +58,7 @@ template Broadcast
     maintainer key.broadcaster
 
     controller broadcast.broadcaster can
-      nonconsuming BroadcastUpdate : ()
+      nonconsuming BroadcastUpdate : ContractId BroadcastData
         with
           newPayload : Something
         do
@@ -60,9 +66,9 @@ template Broadcast
           archive oldDataCid
           let newData = oldData with payload = newPayload
           newDataCid <- create newData
-
           forA_ subscribers
             (\subscriber -> exerciseByKey @BroadcastSubscription (BroadcastSubscription with ..) UpdateData)
+          return newDataCid
 
       AddSubscriber : (ContractId Broadcast, ContractId BroadcastSubscription)
         with
@@ -71,6 +77,7 @@ template Broadcast
           bc <- create this with
             subscribers = subscriber :: subscribers
           bs <- create BroadcastSubscription with ..
+          exercise bs UpdateData
           return (bc, bs)
 
 test_broadcast = script do
@@ -101,9 +108,22 @@ test_broadcast = script do
       submit broadcaster do
         exerciseCmd bcCid BroadcastUpdate with
           newPayload = Something with
-    addAndUpdate (bcCid : ContractId Broadcast) subscriber = do
-      newBcCid <- addSubscriber subscriber bcCid
-      updateData newBcCid
-      return newBcCid
+    checkVis currentSubscribers dataCid = do
+      forA_ subscribers (\subscriber ->
+        let s = if subscriber `elem` currentSubscribers 
+            then (\p e -> void (submit p e)) 
+            else submitMustFail
+         in s subscriber do
+            exerciseByKeyCmd @BroadcastSubscription (BroadcastSubscription with ..)
+              (FetchData with ..))
+        
+    checkAddAndUpdate (bcCid, dataCid, currentSubscribers) newSubscriber = do
+      checkVis currentSubscribers dataCid
+      newBcCid <- addSubscriber newSubscriber bcCid
+      let newCurrentSubscribers = newSubscriber :: currentSubscribers
+      checkVis newCurrentSubscribers dataCid
+      newDataCid <- updateData newBcCid
+      checkVis newCurrentSubscribers newDataCid
+      return (newBcCid, newDataCid, newCurrentSubscribers)
 
-  foldlA addAndUpdate bcCid subscribers
+  foldlA checkAddAndUpdate (bcCid, dataCid, []) subscribers
