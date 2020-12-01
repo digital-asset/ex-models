@@ -4,6 +4,7 @@
 module Broadcast where
 
 import DA.Action
+import DA.Foldable (forA_)
 import Daml.Script
 
 data Something = Something with
@@ -12,11 +13,6 @@ data Something = Something with
 data BroadcastKey = BroadcastKey with
   broadcaster : Party
   id : Text
-    deriving (Eq, Show)
-
-data SubscriptionKey = SubscriptionKey with
-  broadcast : BroadcastKey
-  subscriber : Party
     deriving (Eq, Show)
 
 template BroadcastData
@@ -31,46 +27,19 @@ template BroadcastData
 
 template BroadcastSubscription
   with
-    subscription : SubscriptionKey
-    currentDataCid : ContractId BroadcastData
-    currentData : BroadcastData
-  where
-    signatory subscription.broadcast.broadcaster, subscription.subscriber
-
-    key subscription : SubscriptionKey
-    maintainer key.broadcast.broadcaster
-
-    controller subscription.broadcast.broadcaster can
-      UpdateData : ContractId BroadcastSubscription
-        with
-          newDataCid : ContractId BroadcastData
-        do
-          -- This `fetch` ensures the new data lands in the subscriber's PCS
-          newData <- fetch newDataCid
-          create this with
-            currentDataCid = newDataCid
-            currentData = newData
-
-template SubscriptionRequest
-  with
     broadcast : BroadcastKey
     subscriber : Party
   where
-    signatory subscriber
+    signatory broadcast.broadcaster
+    key this : BroadcastSubscription
+    maintainer key.broadcast.broadcaster
 
     controller broadcast.broadcaster can
-      AcceptSubscription : ContractId BroadcastSubscription
-        with
-          currentDataCid : ContractId BroadcastData
-        do
-          -- This `fetch` ensures the current data lands in the subscriber's PCS
-          currentData <- fetch currentDataCid
-          create BroadcastSubscription with
-            subscription = SubscriptionKey with
-              broadcast
-              subscriber
-            currentDataCid
-            currentData
+    nonconsuming choice UpdateData : (ContractId BroadcastData, BroadcastData)
+      observer subscriber
+      controller broadcast.broadcaster
+      do
+        fetchByKey @BroadcastData broadcast
 
 template Broadcast
   with
@@ -83,7 +52,7 @@ template Broadcast
     maintainer key.broadcaster
 
     controller broadcast.broadcaster can
-      nonconsuming BroadcastUpdate : [ContractId BroadcastSubscription]
+      nonconsuming BroadcastUpdate : ()
         with
           newPayload : Something
         do
@@ -92,30 +61,21 @@ template Broadcast
           let newData = oldData with payload = newPayload
           newDataCid <- create newData
 
-          forA subscribers
-            (\subscriber -> do
-              (subCid, _) <- fetchByKey @BroadcastSubscription
-                SubscriptionKey with
-                  broadcast = key this
-                  subscriber
-              exercise subCid UpdateData with
-                newDataCid
-            )
+          forA_ subscribers
+            (\subscriber -> exerciseByKey @BroadcastSubscription (BroadcastSubscription with ..) UpdateData)
 
       AddSubscriber : (ContractId Broadcast, ContractId BroadcastSubscription)
         with
-          reqCid : ContractId SubscriptionRequest
+          subscriber : Party
         do
-          (currentDataCid, currentData) <- fetchByKey @BroadcastData (key this)
-          req <- fetch reqCid
           bc <- create this with
-            subscribers = req.subscriber :: subscribers
-          bs <- exercise reqCid AcceptSubscription with currentDataCid
+            subscribers = subscriber :: subscribers
+          bs <- create BroadcastSubscription with ..
           return (bc, bs)
 
 test_broadcast = script do
   broadcaster <- allocateParty "Alice"
-  subscribers <- mapA allocateParty $ map (\i -> "Subscriber" <> show i) [1..5]
+  subscribers <- mapA (allocateParty . (\i -> "Subscriber" <> show i)) [1..5]
 
   let
     broadcast = BroadcastKey with
@@ -134,12 +94,8 @@ test_broadcast = script do
 
   let
     addSubscriber subscriber (bcCid : ContractId Broadcast) = do
-      reqCid <- submit subscriber do
-        createCmd SubscriptionRequest with
-          broadcast
-          subscriber
       (newBcCid, _) <- submit broadcaster do
-        exerciseCmd bcCid AddSubscriber with reqCid
+        exerciseCmd bcCid AddSubscriber with subscriber
       return newBcCid
     updateData (bcCid : ContractId Broadcast) = do
       submit broadcaster do
