@@ -3,7 +3,7 @@
 
 module Voting where
 
-import DA.Next.Set as S
+import DA.Set as S
 import DA.List as L
 import Daml.Script
 

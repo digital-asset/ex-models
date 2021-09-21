@@ -3,7 +3,7 @@
 
 module Test where
 
-import DA.Next.Set as S
+import DA.Set as S
 import Daml.Script
 import Governance
 
