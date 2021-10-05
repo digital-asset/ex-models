@@ -3,8 +3,10 @@
 
 module Test where
 
+import DA.Action
 import DA.Date
 import DA.Time
+import DA.List
 import Daml.Script
 import CrowdFunding
 import Iou
@@ -14,9 +16,6 @@ data Fixture = Fixture with
   a : Party
   b : Party
   c : Party
-  iouIdA : ContractId Iou
-  iouIdB : ContractId Iou
-  iouIdC : ContractId Iou
   projectId : ContractId Campaign
 
 setupFixture : Decimal -> Decimal -> Decimal -> Decimal -> Script Fixture
@@ -27,9 +26,11 @@ setupFixture amountA amountB amountC threshold =
     a <- allocateParty "A"
     b <- allocateParty "B"
     c <- allocateParty "C"
-    iouIdA <- submit i do createCmd Iou with issuer = i; owner = a; locker = a; amount = amountA; currency = "USD"
-    iouIdB <- submit i do createCmd Iou with issuer = i; owner = b; locker = b; amount = amountB; currency = "USD"
-    iouIdC <- submit i do createCmd Iou with issuer = i; owner = c; locker = c; amount = amountC; currency = "USD"
+    
+    submit i do createCmd Iou with issuer = i; owner = a; locker = a; amount = amountA; currency = "USD"
+    submit i do createCmd Iou with issuer = i; owner = b; locker = b; amount = amountB; currency = "USD"
+    submit i do createCmd Iou with issuer = i; owner = c; locker = c; amount = amountC; currency = "USD"
+
     projectId <- submit o do
       createCmd Campaign with
         originator = o
@@ -40,15 +41,21 @@ setupFixture amountA amountB amountC threshold =
         raised = 0.0
         deadline = time (date 1970 Jan 2) 0 0 0
         threshold
-    inviteId <- submit o do exerciseCmd projectId Invite with backer = a
-    projectId <- submit a do exerciseCmd inviteId Accept
-    inviteId <- submit o do exerciseCmd projectId Invite with backer = b
-    projectId <- submit b do exerciseCmd inviteId Accept
-    inviteId <- submit o do exerciseCmd projectId Invite with backer = c
-    projectId <- submit c do exerciseCmd inviteId Accept
-    projectId <- submit a do exerciseCmd projectId Pledge with backer = a; iouId = iouIdA
-    projectId <- submit b do exerciseCmd projectId Pledge with backer = b; iouId = iouIdB
-    projectId <- submit c do exerciseCmd projectId Pledge with backer = c; iouId = iouIdC
+
+    let backers = [a,b,c]
+
+    -- | exercise Invite then Accept for each of the backers 
+    projectId <- foldlA (\projectId backer -> do 
+      inviteId <- submit o do exerciseCmd projectId Invite with ..
+      submit backer do exerciseCmd inviteId Accept
+      ) projectId backers
+    
+    -- | exercise Pledge for each of the backers respective Ious
+    projectId <- foldlA (\projectId backer -> do
+      iouId <- fst . head <$> queryFilter @Iou backer (\Iou{..} -> owner == backer)
+      submit backer do exerciseCmd projectId Pledge with ..
+      ) projectId backers
+
     pure Fixture with ..
 
 validClaim = script do

@@ -3,7 +3,7 @@
 
 module Types where
 
-import DA.Next.Map as M
+import DA.Text
 
 data GameId = GameId with
   ref : Text
@@ -64,3 +64,26 @@ data MoveResult
   = Winner Player
   | NewState GameState
   | Error Text
+
+-- | A class for types that can be used as keys for the `Map` type.
+-- All keys `k` must satisfy `keyFromText (keyToText k) == k`.
+class Eq k => MapKey k where
+  -- | Turn a key into its textual representation. This function must be
+  -- injective.
+  keyToText : k -> Text
+  -- | Recover a key from its textual representation. `keyFromText x` is
+  -- allowed to fail whenever there is _no_ key `k` with `keyToText k == x`.
+  -- Whenever such a `k` does exist, then it must satisfy
+  -- `keyFromText x == k`.
+  keyFromText : Text -> k
+
+keyFromTextNote : Text -> Text -> Text
+keyFromTextNote target t =
+  "keyFromText: could not parse " <> show t <> " as '" <> target <> "'"
+
+instance MapKey Int where
+  keyToText = show
+  keyFromText t =
+    case parseInt t of
+      None -> error (keyFromTextNote "Int" t)
+      Some x -> x

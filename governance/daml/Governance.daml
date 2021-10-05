@@ -3,7 +3,7 @@
 
 module Governance where
 
-import DA.Next.Set as S
+import DA.Set as S
 import DA.List as L
 
 data Proposal

@@ -4,7 +4,7 @@
 module Rules.Data where
 
 import DA.Either
-import DA.Next.Map as M
+import DA.Map as M
 import DA.Text as T
 
 import Types
