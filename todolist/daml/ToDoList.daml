@@ -1,0 +1,283 @@
+daml 1.2
+module ToDoList where
+
+import DA.Time
+
+-- Working with cases https://docs.daml.com/daml/intro/3_Data.html
+
+data ToDoState
+    = Proposed
+    | Rejected TDSRejected
+    | Started TDStarted
+    | Done TDDone
+    | SignedOff TDSignedOff
+    | ProposeContinue TDProposeContinue
+    | Continue TDContinue
+    deriving (Eq, Show)
+
+data TDSRejected = TDSRejected 
+    with 
+        comment : Text
+    deriving (Eq, Show)
+
+data TDStarted = TDStarted 
+    with 
+        startTime : Time
+    deriving (Eq, Show)
+
+data TDDone = TDDone 
+    with 
+        startTime : Time
+        endTime : Time
+    deriving (Eq, Show)
+
+data TDProposeContinue = TDProposeContinue 
+    with 
+        startTime : Time
+        endTime : Time
+        comment : Text
+    deriving (Eq, Show)
+
+data TDContinue = TDContinue 
+    with 
+        startTime : Time
+        endTime : Time
+    deriving (Eq, Show)
+
+data TDSignedOff = TDSignedOff 
+    with 
+        startTime : Time
+        endTime : Time
+        spentTime : RelTime
+    deriving (Eq, Show)
+
+data ToDo = ToDo
+    with 
+        issuer : Party
+        assignee : Party 
+        todoDescription : Text
+    deriving (Eq, Show)
+
+template ToDoItem 
+    with 
+        state : ToDoState
+        toDo : ToDo
+    where
+        signatory 
+            case state of 
+                Proposed -> [toDo.issuer]
+                _ -> [toDo.issuer, toDo.assignee]
+
+        controller toDo.issuer can
+            ToDoDone : ContractId ToDoItem
+                do 
+                    case state of
+                        Done TDDone 
+                            with 
+                                startTime 
+                                endTime ->
+                                do 
+                                    let startedTime = startTime
+                                        endedTime = endTime
+                                    create this 
+                                        with 
+                                            state = SignedOff TDSignedOff
+                                                with 
+                                                    startTime = startedTime
+                                                    endTime = endedTime
+                                                    spentTime = subTime endTime startTime
+                        _ -> error "Can't do this! The contract must be in the state 'ProposeDone' for it to be accepted"
+        
+            ToDoProposeContinue : ContractId ToDoItem
+                with newComment : Text
+                do 
+                    case state of
+                        Done TDDone 
+                            with 
+                                startTime 
+                                endTime ->
+                                do 
+                                    let startedTime = startTime
+                                        endedTime = endTime
+                                    create this 
+                                        with 
+                                            state = ProposeContinue TDProposeContinue
+                                                with 
+                                                    startTime = startedTime
+                                                    endTime = endedTime
+                                                    comment = newComment
+                        _ -> error "Can't do this! The contract must be in the state 'Done' for it to be proposed for continuation"
+
+        controller toDo.assignee can 
+            ToDoRejected : ContractId ToDoItem
+                with 
+                    newComment : Text
+                do 
+                    case state of
+                        Proposed ->
+                            do 
+                                create this 
+                                    with 
+                                        state = Rejected TDSRejected
+                                            with 
+                                                comment = newComment
+                        _ -> error "Can't do this! The contract must be in the state 'Proposed' for it to be rejected"
+
+            ToDoStarted : ContractId ToDoItem
+                do 
+                    case state of 
+                        Proposed ->
+                            do  
+                                now <- getTime
+                                create this 
+                                    with 
+                                        state = Started TDStarted
+                                            with
+                                                startTime = now
+                        _ -> error "Can't do this! The contract must be in the state 'Proposed' for it to be started"
+
+            ToDoProposeDone : ContractId ToDoItem
+                do 
+                    case state of 
+                        Started TDStarted with startTime ->
+                            do  
+                                let startedTime = startTime
+                                now <- getTime
+                                create this 
+                                    with 
+                                        state = Done TDDone
+                                            with
+                                                startTime = startedTime
+                                                endTime = now
+                        _ -> error "Can't do this! The contract must be in the state 'Started' for it to be proposed as done"
+            
+            ToDoContinueWorking : ContractId ToDoItem
+                do 
+                    case state of 
+                        ProposeContinue TDProposeContinue with startTime ->
+                            do  
+                                let startedTime = startTime
+                                create this 
+                                    with 
+                                        state = Continue TDContinue
+                                            with
+                                                startTime = startedTime
+                                                endTime = startedTime
+                        _ -> error "Can't do this! The contract must be in the state 'ProposeContinue' for it to be continued on"
+
+            ToDoRejectContinueWorking : ContractId ToDoItem
+                do 
+                    case state of 
+                        ProposeContinue TDProposeContinue 
+                            with 
+                                startTime 
+                                endTime ->
+                            do  
+                                let startedTime = startTime
+                                    endedTimd = endTime
+                                create this 
+                                    with 
+                                        state = Done TDDone
+                                            with
+                                                startTime = startedTime
+                                                endTime = startedTime
+                        _ -> error "Can't do this! The contract must be in the state 'ProposeContinue' for it to be rejected"
+            -- calling the choice already archives the contract!!!
+            nonconsuming Trash : ()
+                do 
+                    case state of 
+                        SignedOff _ -> 
+                            -- self refferes to ContractId* not the data
+                            archive self
+                        _ -> error "Can't do this! The contract must be in the state 'ProposeContinue' for it to be rejected"
+        
+-- just create the todo proposal
+create_toDo_proposal = scenario do 
+    alice <- getParty "Alice"
+    bob <- getParty "Bob"
+
+    submit alice do 
+        create ToDoItem with
+            toDo = ToDo with issuer = alice; assignee = bob; todoDescription = "Please clean up your mess"
+            state = Proposed
+
+-- create the todo proposal and reject it
+create_toDo_proposal_rejected = scenario do 
+    alice <- getParty "Alice"
+    bob <- getParty "Bob"
+
+    porposed_contract <- submit alice do 
+        create ToDoItem with
+            toDo = ToDo with issuer = alice; assignee = bob; todoDescription = "Please clean up your mess"
+            state = Proposed
+
+    submit bob do
+        exercise porposed_contract ToDoRejected with newComment = "Don't have the time for it"
+
+-- scenario will fail as there was no proposal with Bob's signature  
+missing_signature = scenario do 
+    alice <- getParty "Alice"
+    bob <- getParty "Bob"
+
+    submitMustFail alice do 
+        now <- getTime
+        create ToDoItem with
+            toDo = ToDo with issuer = alice; assignee = bob; todoDescription = "Please clean up your mess"
+            -- https://docs.daml.com/daml/intro/3_Data.html for how to create this record
+            state = Started TDStarted with startTime = now 
+
+-- scenario that fails becasue the todo is not in the 'proposed' state
+create_toDo_started = scenario do 
+    alice <- getParty "Alice"
+    bob <- getParty "Bob"
+
+    proposed_contract <- submit alice do 
+        create ToDoItem with
+            toDo = ToDo with issuer = alice; assignee = bob; todoDescription = "Please clean up your mess"
+            state = Proposed
+    
+    submitMustFail bob do
+        exercise proposed_contract ToDoProposeDone
+-- scenario fails as bob can't reject the contract once he has started working on it
+create_toDo_started_and_rejected = scenario do 
+    alice <- getParty "Alice"
+    bob <- getParty "Bob"
+
+    proposed_contract <- submit alice do 
+        create ToDoItem with
+            toDo = ToDo with issuer = alice; assignee = bob; todoDescription = "Please clean up your mess"
+            state = Proposed
+    
+    proposed_contract <- submit bob do
+        exercise proposed_contract ToDoStarted
+
+    submitMustFail bob do
+        exercise proposed_contract ToDoRejected with newComment ="Can't do it"
+
+-- working scenario -> propose, start, propose done, done
+working_scenario = scenario do 
+    alice <- getParty "Alice"
+    bob <- getParty "Bob"
+
+    proposed_contract <- submit alice do 
+        create ToDoItem with
+            toDo = ToDo with issuer = alice; assignee = bob; todoDescription = "Please clean up your mess"
+            state = Proposed
+    
+    proposed_contract_started <- submit bob do
+        exercise proposed_contract ToDoStarted
+    
+    pass (minutes 29)
+
+    proposed_contract_done <- submit bob do
+        exercise proposed_contract_started ToDoProposeDone 
+    
+    proposed_contract_signed_off <- submit alice do
+        exercise proposed_contract_done ToDoDone
+    {-
+    submit bob do
+        archive proposed_contract_signed_off
+        -}
+    submit bob do
+        exercise proposed_contract_signed_off Trash
+    -- return ()

@@ -1,0 +1,11 @@
+sdk-version: 0.13.29
+name: tasktracking
+source: daml
+scenario: Main:setup
+parties:
+  - Alice
+  - Bob
+version: 0.0.1
+dependencies:
+  - daml-prim
+  - daml-stdlib
