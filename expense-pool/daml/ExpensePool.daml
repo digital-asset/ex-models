@@ -21,6 +21,7 @@ template Iou
     currency : Text
   where
     signatory issuer
+    observer owner
 
 template Pool
   with
